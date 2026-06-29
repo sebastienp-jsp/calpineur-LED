@@ -121,6 +121,7 @@
 
   /* modal */
   .overlay{position:fixed;inset:0;background:rgba(5,7,10,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+  #overlay{z-index:60}
   .overlay.show{display:flex}
   .modal{background:var(--panel);border:1px solid var(--line2);border-radius:14px;width:560px;max-width:100%;max-height:92vh;overflow-y:auto}
   .modal header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
@@ -153,6 +154,7 @@
     <input type="file" id="fileInput" accept=".dxf,.pdf,.ai" style="display:none">
     <span class="fname" id="fileName">aucun fichier</span>
     <div class="spacer"></div>
+    <button class="btn ghost" id="btnLib"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h10M4 10h10M4 15h6M18 5v14M18 5l3 3M18 19l3-3"/></svg>Modules</button>
     <button class="btn ghost" id="btnBom" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Nomenclature</button>
     <button class="btn primary" id="btnExport" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v12M7 15l5 5 5-5M5 4h14"/></svg>Exporter DXF</button>
   </div>
@@ -160,39 +162,34 @@
   <!-- BODY -->
   <div class="body">
 
-    <!-- LEFT : library + project params -->
+    <!-- LEFT : selection + project params -->
     <div class="col left">
       <div class="sec">
-        <h3><span class="n">01</span> Bibliothèque de modules <span style="flex:1"></span></h3>
-        <button class="btn ghost" id="btnAddMod" style="width:100%;justify-content:center;margin-bottom:12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Nouveau module</button>
-        <div class="mod-list" id="modList"></div>
+        <h3><span class="n">01</span> Fond / face</h3>
+        <div class="field">
+          <label>Profondeur fond/face à réaliser</label>
+          <select id="selFront"><option value="">— choisir —</option></select>
+          <div class="hint">C'est la contrainte de départ. Elle filtre automatiquement les modules adaptés à cette profondeur.</div>
+        </div>
+        <div class="field">
+          <label>Module adapté</label>
+          <select id="selMod"><option value="">— choisir d'abord un fond/face —</option></select>
+        </div>
       </div>
 
       <div class="sec">
-        <h3><span class="n">02</span> Paramètres de pose</h3>
+        <h3><span class="n">02</span> Import</h3>
         <div class="field">
-          <label>Module sélectionné</label>
-          <select id="selMod"><option value="">— choisir —</option></select>
-        </div>
-        <div class="field">
-          <label>Configuration fond/face</label>
-          <select id="selPose"><option value="">— choisir un module —</option></select>
-        </div>
-        <div class="grid2">
-          <div class="field"><label>Angle d'éclairage <span class="u">°</span></label><input type="number" id="pAngle" value="160" min="60" max="180" step="5"></div>
-          <div class="field"><label>Modules / boucle max</label><input type="number" id="pLoop" value="20" min="1" step="1"></div>
-        </div>
-        <div class="field">
-          <label>Unité du DXF importé</label>
+          <label>Unité du fichier importé (DXF)</label>
           <select id="pUnit"><option value="1">Millimètres</option><option value="10">Centimètres</option><option value="25.4">Pouces</option><option value="1000">Mètres</option></select>
-          <div class="hint">S'applique aux <b>DXF</b> : on ramène les coordonnées en mm pour le calcul, puis on réexporte dans l'unité d'origine. Les <b>PDF / AI</b> sont lus en points et convertis automatiquement en mm (sortie DXF en mm).</div>
+          <div class="hint">S'applique aux <b>DXF</b> : coordonnées ramenées en mm pour le calcul puis réexportées dans l'unité d'origine. Les <b>PDF / AI</b> sont convertis automatiquement (sortie DXF en mm).</div>
         </div>
         <button class="btn primary" id="btnRun" style="width:100%;justify-content:center;margin-top:6px" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-14 9V3z"/></svg>Calculer le calepinage</button>
       </div>
 
       <div class="sec" style="flex:1">
         <h3><span class="n">03</span> Pose sélectionnée</h3>
-        <div id="poseDetail" class="empty-note">Choisissez un module pour voir ses cotes de pose.</div>
+        <div id="poseDetail" class="empty-note">Choisissez un fond/face puis un module.</div>
       </div>
     </div>
 
@@ -277,6 +274,12 @@
       <div id="poseRows"></div>
       <button class="mini" id="addPose" style="margin-top:4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px"><path d="M12 5v14M5 12h14"/></svg> Ajouter une configuration</button>
       <div class="hint">Toutes les valeurs sont en mm (sauf Mod./m²). Tu choisiras la configuration à utiliser au moment du calepinage.</div>
+      <div class="sub">Optique & câblage</div>
+      <div class="grid3">
+        <div class="field"><label>Angle d'éclairage <span class="u">°</span></label><input type="number" id="f_angle" value="160" min="60" max="180" step="5"></div>
+        <div class="field"><label>Modules / boucle max</label><input type="number" id="f_loop" value="20" min="1" step="1"></div>
+        <div class="field"><label>Tension alim. <span class="u">V</span></label><input type="number" id="f_volt" value="12" step="1"></div>
+      </div>
       <div class="sub">Électrique</div>
       <div class="field"><label>Puissance par module <span class="u">W</span></label><input type="number" id="f_pow" value="1.2" step="0.1"></div>
       <div class="field"><label>Nb max de modules par transformateur</label></div>
@@ -294,6 +297,20 @@
     <footer>
       <button class="btn ghost" id="modalCancel">Annuler</button>
       <button class="btn primary" id="modalSave">Enregistrer</button>
+    </footer>
+  </div>
+</div>
+
+<!-- LIBRARY MODAL -->
+<div class="overlay" id="libOverlay">
+  <div class="modal">
+    <header><h2>Bibliothèque de modules</h2><button class="x" id="libClose">×</button></header>
+    <div class="mbody">
+      <button class="btn ghost" id="btnAddMod" style="width:100%;justify-content:center;margin-bottom:14px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Nouveau module</button>
+      <div class="mod-list" id="modList"></div>
+    </div>
+    <footer>
+      <button class="btn primary" id="libDone">Fermer</button>
     </footer>
   </div>
 </div>
@@ -326,6 +343,9 @@ async function loadModules(){
 function migrateModule(m){
   if(m.len==null) m.len=m.size!=null?m.size:50;
   if(m.wid==null) m.wid=m.size!=null?m.size:20;
+  if(m.angle==null) m.angle=160;
+  if(m.loop==null) m.loop=20;
+  if(m.volt==null) m.volt=12;
   if(!Array.isArray(m.poses)){
     m.poses=[{front:m.front!=null?m.front:80, bande:m.bande!=null?m.bande:140, edge:m.edge!=null?m.edge:40, maxsp:m.maxsp!=null?m.maxsp:140, perm2:m.perm2!=null?m.perm2:50}];
   }
@@ -338,7 +358,7 @@ async function saveModules(){
 }
 function defaultModules(){
   return [{
-    id:uid(),name:"Module standard 3 lentilles",len:50,wid:20,
+    id:uid(),name:"Module standard 3 lentilles",len:50,wid:20,angle:160,loop:20,volt:12,
     poses:[
       {front:60,bande:110,edge:35,maxsp:110,perm2:70},
       {front:80,bande:140,edge:40,maxsp:140,perm2:50},
@@ -553,11 +573,11 @@ function transfoPlan(N,mod,maxPerLoop,wireLoops){
 
 /* ============================ RUN ============================ */
 function getSelectedModule(){var id=document.getElementById("selMod").value;return state.modules.find(function(m){return m.id===id;});}
-function getSelectedPose(){var mod=getSelectedModule();if(!mod||!mod.poses)return null;var i=parseInt(document.getElementById("selPose").value);return (i>=0&&mod.poses[i])?mod.poses[i]:null;}
+function getSelectedPose(){var mod=getSelectedModule();if(!mod||!mod.poses)return null;var fr=document.getElementById("selFront").value;if(fr==="")return null;fr=+fr;return mod.poses.find(function(p){return p.front===fr;})||null;}
 function run(){
   var mod=getSelectedModule(), pose=getSelectedPose();
   if(!mod||!pose||!state.loops.length)return;
-  var maxPerLoop=Math.max(1,parseInt(document.getElementById("pLoop").value)||20);
+  var maxPerLoop=Math.max(1,parseInt(mod.loop)||20);
   var res=fillCalepinage(state.loops,pose.bande,pose.edge,pose.maxsp,Math.min(mod.len,mod.wid));
   state.ledPts=res.pts;
   state.litAreaM2=res.litAreaM2;
@@ -583,7 +603,7 @@ function renderResults(mod,pose){
 
   // alerts
   var al=[];
-  var reco=recoSpacing(pose.front,parseFloat(document.getElementById("pAngle").value)||160);
+  var reco=recoSpacing(pose.front,mod.angle||160);
   if(pose.maxsp>1.3*reco) al.push(["bad","Espacement entre modules ("+pose.maxsp+" mm) très supérieur au recommandé (~"+Math.round(reco)+" mm) pour "+pose.front+" mm de fond/face — risque de points sombres sur la face."]);
   else if(pose.maxsp>reco) al.push(["warn","Espacement entre modules ("+pose.maxsp+" mm) au-delà du recommandé (~"+Math.round(reco)+" mm) — recouvrement limite, à vérifier sur face peu diffusante."]);
   else al.push(["ok","Espacement modules / fond-face cohérent avec l'angle (recommandé ~"+Math.round(reco)+" mm)."]);
@@ -610,13 +630,16 @@ function renderResults(mod,pose){
 
   // electrical plan
   if(p&&p.assign.length){
+    var volt=mod.volt||12;
     var html=p.assign.map(function(tx,i){
       var loopLabels=tx.loops.map(function(lp,j){return "B"+(p.assign.slice(0,i).reduce(function(a,t){return a+t.loops.length;},0)+j+1);}).join(" · ");
-      var load=(tx.n*mod.pow).toFixed(1).replace(/\.0$/,'');
+      var watt=tx.n*mod.pow;
+      var load=watt.toFixed(1).replace(/\.0$/,'');
+      var amp=(watt/volt).toFixed(1);
       var capW=p.best.t;
-      var pct=Math.min(100,Math.round((tx.n*mod.pow)/capW*100));
-      return '<div class="tx-row"><div class="th"><span>Transfo T'+(i+1)+' · '+p.best.t+' W</span><span>'+tx.n+' mod · '+load+' W</span></div>'
-        +'<div class="ts">Boucles : '+loopLabels+'</div>'
+      var pct=Math.min(100,Math.round(watt/capW*100));
+      return '<div class="tx-row"><div class="th"><span>Transfo T'+(i+1)+' · '+p.best.t+' W · '+volt+' V</span><span>'+tx.n+' mod · '+load+' W</span></div>'
+        +'<div class="ts">Boucles : '+loopLabels+' &nbsp;·&nbsp; '+amp+' A</div>'
         +'<div class="bar"><i style="width:'+pct+'%"></i></div></div>';
     }).join("");
     document.getElementById("planBlock").innerHTML=html;
@@ -641,16 +664,20 @@ function buildLegend(){
 function renderPoseDetail(){
   var mod=getSelectedModule(), pose=getSelectedPose();
   var el=document.getElementById("poseDetail");
-  if(!mod){el.className="empty-note";el.textContent="Choisissez un module pour voir ses configurations de pose.";return;}
-  if(!pose){el.className="empty-note";el.textContent="Choisissez une configuration fond/face pour ce module.";return;}
+  if(document.getElementById("selFront").value===""){el.className="empty-note";el.textContent="Choisissez d'abord un fond/face.";return;}
+  if(!mod){el.className="empty-note";el.textContent="Choisissez un module adapté à ce fond/face.";return;}
+  if(!pose){el.className="empty-note";el.textContent="Ce module n'a pas de configuration pour ce fond/face.";return;}
   el.className="";
-  el.innerHTML='<table class="tf"><tr><td>Fond / face</td><td>'+pose.front+' mm</td></tr>'
+  el.innerHTML='<table class="tf"><tr><td>Module</td><td>'+esc(mod.name)+'</td></tr>'
+    +'<tr><td>Fond / face</td><td>'+pose.front+' mm</td></tr>'
     +'<tr><td>Entre bandes</td><td>'+pose.bande+' mm</td></tr>'
     +'<tr><td>Côté → 1ʳᵉ bande</td><td>'+pose.edge+' mm</td></tr>'
     +'<tr><td>Entre modules max</td><td>'+pose.maxsp+' mm</td></tr>'
     +'<tr><td>Modules / m² (cible)</td><td>'+pose.perm2+'</td></tr>'
     +'<tr><td>Dimensions (L × l)</td><td>'+mod.len+' × '+mod.wid+' mm</td></tr>'
-    +'<tr><td>Puissance</td><td>'+mod.pow+' W</td></tr></table>';
+    +'<tr><td>Angle d\'éclairage</td><td>'+mod.angle+'°</td></tr>'
+    +'<tr><td>Modules / boucle max</td><td>'+mod.loop+'</td></tr>'
+    +'<tr><td>Puissance / tension</td><td>'+mod.pow+' W · '+mod.volt+' V</td></tr></table>';
 }
 
 /* ============================ CANVAS ============================ */
@@ -800,13 +827,13 @@ function exportDxf(){
 }
 function exportBom(){
   var mod=getSelectedModule(), pose=getSelectedPose();if(!mod||!pose)return;
-  var N=state.ledPts.length,p=state.plan;
-  var rows=[["Référence module",mod.name],["Modules total",N],["Boucles",state.wireLoops.length],
+  var N=state.ledPts.length,p=state.plan,volt=mod.volt||12;
+  var rows=[["Référence module",mod.name],["Modules total",N],["Boucles",state.wireLoops.length],["Modules/boucle max",mod.loop],
     ["Densité /m²",state.litAreaM2>0?Math.round(N/state.litAreaM2):0],
-    ["Puissance totale (W)",(N*mod.pow).toFixed(1)],
+    ["Puissance totale (W)",(N*mod.pow).toFixed(1)],["Tension (V)",volt],["Intensité totale (A)",(N*mod.pow/volt).toFixed(1)],["Angle éclairage (°)",mod.angle],
     ["Fond/face (mm)",pose.front],["Entre bandes (mm)",pose.bande],["Entre modules max (mm)",pose.maxsp],["Côté 1ʳᵉ bande (mm)",pose.edge],["Modules/m² cible",pose.perm2],["Dimensions module (mm)",mod.len+" x "+mod.wid]];
-  if(p&&p.best){rows.push(["Transfo recommandé",p.best.qty+" x "+p.best.t+" W"]);rows.push(["Charge transfo",p.best.util+"%"]);}
-  if(p&&p.assign){p.assign.forEach(function(tx,i){rows.push(["Transfo T"+(i+1)+" ("+p.best.t+" W)",tx.n+" modules / "+tx.loops.length+" boucles"]);});}
+  if(p&&p.best){rows.push(["Transfo recommandé",p.best.qty+" x "+p.best.t+" W ("+volt+" V)"]);rows.push(["Charge transfo",p.best.util+"%"]);}
+  if(p&&p.assign){p.assign.forEach(function(tx,i){rows.push(["Transfo T"+(i+1)+" ("+p.best.t+" W)",tx.n+" modules / "+tx.loops.length+" boucles / "+(tx.n*mod.pow/volt).toFixed(1)+" A"]);});}
   var csv=rows.map(function(r){return '"'+r[0]+'","'+r[1]+'"';}).join("\n");
   var base=(state.fileName||"design").replace(/\.(dxf|pdf|ai)$/i,"");
   download(base+"_nomenclature.csv","Poste,Valeur\n"+csv,"text/csv");
@@ -945,24 +972,39 @@ function clearResults(){
 /* ============================ LIBRARY UI ============================ */
 function renderLibrary(){
   var list=document.getElementById("modList");
-  var sel=document.getElementById("selMod");
-  if(!state.modules.length){list.innerHTML='<div class="empty-note">Aucun module. Créez votre premier module avec ses dimensions, ses configurations de pose et ses plafonds transfo.</div>';}
+  if(!state.modules.length){list.innerHTML='<div class="empty-note">Aucun module. Créez votre premier module avec ses dimensions, ses configurations de pose (fond/face) et ses plafonds transfo.</div>';}
   else{
     list.innerHTML=state.modules.map(function(m){
       var fronts=(m.poses||[]).map(function(p){return p.front;}).join(" / ");
-      return '<div class="mod" data-id="'+m.id+'"><div class="mh"><span class="mn">'+esc(m.name)+'</span><span class="mw">'+m.pow+' W</span></div>'
-        +'<div class="md">'+m.len+'×'+m.wid+'mm · '+(m.poses?m.poses.length:0)+' config. fond/face : '+fronts+'</div>'
+      return '<div class="mod" data-id="'+m.id+'"><div class="mh"><span class="mn">'+esc(m.name)+'</span><span class="mw">'+m.pow+' W · '+m.volt+' V</span></div>'
+        +'<div class="md">'+m.len+'×'+m.wid+'mm · '+m.angle+'° · '+(m.poses?m.poses.length:0)+' config. fond/face : '+fronts+'</div>'
         +'<div class="acts"><button class="mini" data-edit="'+m.id+'">Modifier</button><button class="mini" data-del="'+m.id+'">Supprimer</button></div></div>';
     }).join("");
   }
-  var cur=sel.value;
-  sel.innerHTML='<option value="">— choisir —</option>'+state.modules.map(function(m){return '<option value="'+m.id+'">'+esc(m.name)+'</option>';}).join("");
-  if(cur&&state.modules.find(function(m){return m.id===cur;}))sel.value=cur;
-  markActiveMod();
+  refreshSelectors();
 }
-function markActiveMod(){
-  var id=document.getElementById("selMod").value;
-  document.querySelectorAll(".mod").forEach(function(el){el.classList.toggle("active",el.getAttribute("data-id")===id);});
+// distinct fond/face values across all modules → premier sélecteur
+function refreshSelectors(){
+  var selF=document.getElementById("selFront");
+  var fronts={};
+  state.modules.forEach(function(m){(m.poses||[]).forEach(function(p){fronts[p.front]=true;});});
+  var vals=Object.keys(fronts).map(Number).sort(function(a,b){return a-b;});
+  var cur=selF.value;
+  selF.innerHTML='<option value="">— choisir —</option>'+vals.map(function(v){return '<option value="'+v+'">'+v+' mm</option>';}).join("");
+  if(cur!==""&&fronts[cur])selF.value=cur; else selF.value="";
+  populateModulesForFront();
+}
+// modules ayant une config pour le fond/face choisi
+function populateModulesForFront(){
+  var fr=document.getElementById("selFront").value;
+  var selM=document.getElementById("selMod");
+  if(fr===""){selM.innerHTML='<option value="">— choisir d\'abord un fond/face —</option>';return;}
+  fr=+fr;
+  var matches=state.modules.filter(function(m){return (m.poses||[]).some(function(p){return p.front===fr;});});
+  var cur=selM.value;
+  if(!matches.length){selM.innerHTML='<option value="">aucun module pour ce fond/face</option>';}
+  else{selM.innerHTML='<option value="">— choisir —</option>'+matches.map(function(m){return '<option value="'+m.id+'">'+esc(m.name)+'</option>';}).join("");}
+  if(cur&&matches.find(function(m){return m.id===cur;}))selM.value=cur;
 }
 function esc(s){return (s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
 
@@ -988,10 +1030,13 @@ function openModal(id){
   state.editId=id||null;
   var m=id?state.modules.find(function(x){return x.id===id;}):null;
   document.getElementById("modalTitle").textContent=m?"Modifier le module":"Nouveau module";
-  var f=m||{name:"",len:50,wid:20,poses:[poseDefault()],pow:1.2,t:{40:28,60:42,100:70,150:105,200:140}};
+  var f=m||{name:"",len:50,wid:20,angle:160,loop:20,volt:12,poses:[poseDefault()],pow:1.2,t:{40:28,60:42,100:70,150:105,200:140}};
   document.getElementById("f_name").value=f.name;
   document.getElementById("f_len").value=f.len;
   document.getElementById("f_wid").value=f.wid;
+  document.getElementById("f_angle").value=f.angle;
+  document.getElementById("f_loop").value=f.loop;
+  document.getElementById("f_volt").value=f.volt;
   document.getElementById("f_pow").value=f.pow;
   document.getElementById("f_t40").value=f.t[40];
   document.getElementById("f_t60").value=f.t[60];
@@ -1011,13 +1056,16 @@ function saveModal(){
     name:document.getElementById("f_name").value.trim()||"Module sans nom",
     len:+document.getElementById("f_len").value||50,
     wid:+document.getElementById("f_wid").value||20,
+    angle:+document.getElementById("f_angle").value||160,
+    loop:+document.getElementById("f_loop").value||20,
+    volt:+document.getElementById("f_volt").value||12,
     poses:poses,
     pow:+document.getElementById("f_pow").value||1,
     t:{40:+document.getElementById("f_t40").value||0,60:+document.getElementById("f_t60").value||0,100:+document.getElementById("f_t100").value||0,150:+document.getElementById("f_t150").value||0,200:+document.getElementById("f_t200").value||0}
   };
   if(state.editId){var i=state.modules.findIndex(function(m){return m.id===state.editId;});state.modules[i]=rec;}
   else state.modules.push(rec);
-  saveModules();renderLibrary();populatePoses();renderPoseDetail();closeModal();
+  saveModules();renderLibrary();renderPoseDetail();updateRunState();closeModal();
 }
 
 /* ============================ MISC ============================ */
@@ -1036,14 +1084,18 @@ function bind(){
   document.getElementById("modalClose").onclick=document.getElementById("modalCancel").onclick=closeModal;
   document.getElementById("modalSave").onclick=saveModal;
   document.getElementById("overlay").onclick=function(e){if(e.target===this)closeModal();};
+  // bibliothèque (menu du haut)
+  document.getElementById("btnLib").onclick=function(){renderLibrary();document.getElementById("libOverlay").classList.add("show");};
+  document.getElementById("libClose").onclick=document.getElementById("libDone").onclick=function(){document.getElementById("libOverlay").classList.remove("show");};
+  document.getElementById("libOverlay").onclick=function(e){if(e.target===this)this.classList.remove("show");};
+  document.getElementById("btnAddMod").onclick=function(){openModal(null);};
   document.getElementById("modList").onclick=function(e){
     var ed=e.target.getAttribute("data-edit"),dl=e.target.getAttribute("data-del");
     if(ed){openModal(ed);return;}
-    if(dl){if(confirm("Supprimer ce module ?")){state.modules=state.modules.filter(function(m){return m.id!==dl;});saveModules();renderLibrary();}return;}
-    var card=e.target.closest(".mod");if(card){document.getElementById("selMod").value=card.getAttribute("data-id");onSelMod();}
+    if(dl){if(confirm("Supprimer ce module ?")){state.modules=state.modules.filter(function(m){return m.id!==dl;});saveModules();renderLibrary();renderPoseDetail();updateRunState();}return;}
   };
+  document.getElementById("selFront").onchange=onSelFront;
   document.getElementById("selMod").onchange=onSelMod;
-  document.getElementById("selPose").onchange=onSelPose;
   document.getElementById("addPose").onclick=function(){state.modalPoses=scrapePoseRows();state.modalPoses.push(poseDefault());renderPoseRows();};
   document.getElementById("poseRows").onclick=function(e){
     var rm=e.target.getAttribute("data-rm")||(e.target.closest("button")&&e.target.closest("button").getAttribute("data-rm"));
@@ -1057,7 +1109,6 @@ function bind(){
     document.getElementById("legend").classList.toggle("show",document.getElementById("tWire").checked&&state.wireLoops.length>0);
     draw();
   };});
-  ["pAngle","pLoop"].forEach(function(id){document.getElementById(id).onchange=function(){if(state.plan)run();};});
   document.getElementById("pUnit").onchange=function(){if(state.rawDxf){var f=new File([state.rawDxf],state.fileName||"design.dxf");handleFile(f);}};
 
   // canvas interaction
@@ -1081,19 +1132,12 @@ function bind(){
   window.addEventListener("resize",resizeCanvas);
 }
 var initScale=null;
-function populatePoses(){
-  var mod=getSelectedModule();
-  var sel=document.getElementById("selPose");
-  if(!mod){sel.innerHTML='<option value="">— choisir un module —</option>';return;}
-  var prev=sel.value;
-  sel.innerHTML=(mod.poses||[]).map(function(p,i){return '<option value="'+i+'">'+p.front+' mm — bandes '+p.bande+', max '+p.maxsp+'</option>';}).join("");
-  // garde la sélection si possible, sinon première config
-  if(prev!==""&&mod.poses&&mod.poses[+prev])sel.value=prev; else sel.value="0";
+function onSelFront(){
+  populateModulesForFront();
+  renderPoseDetail();updateRunState();
+  if(state.plan&&getSelectedPose())run();
 }
 function onSelMod(){
-  populatePoses();renderPoseDetail();markActiveMod();updateRunState();
-}
-function onSelPose(){
   renderPoseDetail();updateRunState();
   if(state.plan&&getSelectedPose())run();
 }
