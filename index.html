@@ -503,6 +503,26 @@ function computeBbox(polys){
   return b;
 }
 function scalePolys(polys,k){return polys.map(function(p){return p.map(function(q){return [q[0]*k,q[1]*k];});});}
+// --- détection du cadre / plan de travail (rectangle englobant à ignorer) ---
+function bboxPoly(p){var b={minX:1e15,minY:1e15,maxX:-1e15,maxY:-1e15};p.forEach(function(q){b.minX=Math.min(b.minX,q[0]);b.minY=Math.min(b.minY,q[1]);b.maxX=Math.max(b.maxX,q[0]);b.maxY=Math.max(b.maxY,q[1]);});return b;}
+function polyArea(p){var a=0;for(var i=0;i<p.length-1;i++){a+=p[i][0]*p[i+1][1]-p[i+1][0]*p[i][1];}return Math.abs(a)/2;}
+function isRectFill(p){var b=bboxPoly(p);var ba=(b.maxX-b.minX)*(b.maxY-b.minY);if(ba<=0)return false;return Math.abs(polyArea(p)-ba)/ba<0.03;} // remplit ~tout son cadre = rectangle
+// retire les rectangles qui englobent d'autres contours (cadre Illustrator / bord de plan de travail)
+function stripFrames(loops,segs){
+  if(loops.length<2) return {loops:loops,segs:segs,removed:0};
+  var gb=computeBbox(loops),gw=gb.maxX-gb.minX,gh=gb.maxY-gb.minY;
+  function coversAll(b){return (b.maxX-b.minX)>=gw*0.985 && (b.maxY-b.minY)>=gh*0.985;}
+  function isFrameLoop(p){
+    var b=bboxPoly(p);
+    if(!coversAll(b)||!isRectFill(p))return false;
+    return loops.some(function(q){if(q===p)return false;var qb=bboxPoly(q);return (qb.maxX-qb.minX)<(b.maxX-b.minX)*0.98 && (qb.maxY-qb.minY)<(b.maxY-b.minY)*0.98;});
+  }
+  var removed=loops.filter(isFrameLoop).length;
+  var keptLoops=loops.filter(function(p){return !isFrameLoop(p);});
+  // retire aussi les segments correspondants (rectangle ~ plein cadre) pour l'affichage / l'export PDF→DXF
+  var keptSegs=removed?segs.filter(function(s){var b=bboxPoly(s);return !(coversAll(b)&&isRectFill(s));}):segs;
+  return {loops:keptLoops,segs:keptSegs,removed:removed};
+}
 
 /* ============================ FILL (scanline, even-odd, clipped) ============================ */
 function fillCalepinage(loops,bande,edge,maxsp,size){
@@ -912,9 +932,11 @@ function readPdfAi(file){
   rd.readAsArrayBuffer(file);
 }
 function finalizeGeometry(segsMm, loopsMm, sourceLabel){
-  state.designSegs=segsMm;
-  state.loops=loopsMm;
-  state.bbox=computeBbox(segsMm.length?segsMm:loopsMm);
+  var fr=stripFrames(loopsMm, segsMm);
+  state.designSegs=fr.segs;
+  state.loops=fr.loops;
+  state.framesRemoved=fr.removed;
+  state.bbox=computeBbox(state.designSegs.length?state.designSegs:state.loops);
   state.ledPts=[];state.wireLoops=[];state.plan=null;
   document.getElementById("vpEmpty").style.display="none";
   document.getElementById("vpTools").style.display="flex";
@@ -924,8 +946,12 @@ function finalizeGeometry(segsMm, loopsMm, sourceLabel){
   document.getElementById("btnBom").disabled=true;
   document.getElementById("legend").classList.remove("show");
   clearResults();
-  setPill("idle", state.loops.length?(state.loops.length+" contours fermés détectés · "+sourceLabel):("aucun contour fermé · "+sourceLabel));
+  var note=fr.removed?(" · "+fr.removed+" cadre"+(fr.removed>1?"s":"")+" ignoré"+(fr.removed>1?"s":"")):"";
+  setPill("idle", state.loops.length?(state.loops.length+" contours détectés"+note+" · "+sourceLabel):("aucun contour fermé · "+sourceLabel));
   fitView();
+  if(fr.removed){
+    document.getElementById("alerts").innerHTML='<div class="alert ok"><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></span><span>Cadre / plan de travail détecté et ignoré ('+fr.removed+'). Seules les lettres sont calepinées. Si un contour utile a disparu, dis-le moi.</span></div>';
+  }
   if(!state.loops.length){
     showImportError("Aucun contour fermé détecté. Vérifiez que les lettres sont des chemins fermés (joindre les tracés / fermer les chemins avant l'export).");
   }
