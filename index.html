@@ -340,7 +340,7 @@ var state={
   modules:[], editId:null,
   rawDxf:null, fileName:null, exportScale:1,
   designSegs:[], loops:[], bbox:null,        // geometry in mm
-  ledPts:[], wireLoops:[], bands:[], modulesPlaced:[], litAreaM2:0, gridStep:50,
+  ledPts:[], wireLoops:[], bands:[], modulesPlaced:[], minStrokeW:null, litAreaM2:0, gridStep:50,
   plan:null,
   view:{scale:1,ox:0,oy:0}, drag:null, modalPoses:[]
 };
@@ -719,32 +719,41 @@ function buildBandsEngine(loops,opt){
     var rp=resample(rr,opt.maxsp).filter(function(p){return !nearIso(p);});
     if(rp.length)runs.push(rp);
   });
-  // 3) anti-chevauchement : on impose un espacement minimum (les bandes iso, ajoutées en premier, sont prioritaires)
-  var minGap=Math.min(Math.max(opt.moduleLen||opt.moduleMin||40, opt.moduleWid||0)*0.95, opt.maxsp*0.8, opt.bande*0.8);
-  var gb={},gbk=Math.max(minGap,1);
-  function gTooClose(p){var bx=Math.round(p[0]/gbk),by=Math.round(p[1]/gbk);for(var dx=-1;dx<=1;dx++)for(var dy=-1;dy<=1;dy++){var arr=gb[(bx+dx)+","+(by+dy)];if(arr)for(var i=0;i<arr.length;i++)if(Math.hypot(arr[i][0]-p[0],arr[i][1]-p[1])<minGap)return true;}return false;}
-  function gMark(p){var k=Math.round(p[0]/gbk)+","+Math.round(p[1]/gbk);(gb[k]=gb[k]||[]).push(p);}
-  var fRuns=[];
-  runs.forEach(function(run){var cur=run.filter(function(p){if(gTooClose(p))return false;gMark(p);return true;});if(cur.length)fRuns.push(cur);});
-  // 4) validation d'empreinte : un module ne doit pas dépasser la lettre (champ/contre-forme/extérieur)
+  // 3) validation d'empreinte : un module ne doit pas dépasser la lettre ; s'il dépasse on le RAMÈNE vers l'intérieur (pas de trou)
   var ML=opt.moduleLen||50, MW=opt.moduleWid||opt.moduleMin||18, mhx=ML/2, mhy=MW/2;
+  function Dat(x,y){var i=Math.round((x-r.ox)/r.cell-0.5),j=Math.round((y-r.oy)/r.cell-0.5);if(i<0||j<0||i>=r.w||j>=r.h)return 0;return D[j*r.w+i];}
   function footprintInside(p,ang){
     var c=Math.cos(ang),s=Math.sin(ang);
     var off=[[-mhx,-mhy],[mhx,-mhy],[mhx,mhy],[-mhx,mhy],[0,mhy],[0,-mhy],[mhx,0],[-mhx,0]];
     for(var i=0;i<off.length;i++){var dx=off[i][0],dy=off[i][1];if(!sampleInside(r,p[0]+dx*c-dy*s,p[1]+dx*s+dy*c))return false;}
     return true;
   }
+  function fitOrPull(p,ang){
+    if(footprintInside(p,ang))return p;
+    var gx=Dat(p[0]+cell,p[1])-Dat(p[0]-cell,p[1]), gy=Dat(p[0],p[1]+cell)-Dat(p[0],p[1]-cell), gl=Math.hypot(gx,gy);
+    if(gl<1e-9)return null; gx/=gl; gy/=gl;                 // direction vers l'intérieur (D croissant)
+    var maxStep=Math.ceil(MW/cell)+3;
+    for(var st=1;st<=maxStep;st++){var np=[p[0]+gx*cell*st, p[1]+gy*cell*st];if(footprintInside(np,ang))return np;}
+    return null;
+  }
   var vRuns=[];
-  fRuns.forEach(function(run){
+  runs.forEach(function(run){
     var v=[];
     for(var k=0;k<run.length;k++){
       var p=run[k], nb=run[k+1]||run[k-1]||p, ang=Math.atan2(nb[1]-p[1], nb[0]-p[0]);
-      if(footprintInside(p,ang))v.push(p);
+      var q=fitOrPull(p,ang); if(q)v.push(q);
     }
     if(v.length)vRuns.push(v);
   });
-  var pts=[];vRuns.forEach(function(run){run.forEach(function(p){pts.push(p);});});
-  return {points:pts,runs:vRuns,areaM2:r.inside*cell*cell/1e6,maxD:df.maxD,cell:cell,nLevels:levels.length};
+  // 4) anti-chevauchement : espacement minimum (les bandes iso, traitées en premier, sont prioritaires)
+  var minGap=Math.min(Math.max(ML,MW)*0.9, opt.maxsp*0.8, opt.bande*0.8);
+  var gb={},gbk=Math.max(minGap,1);
+  function gTooClose(p){var bx=Math.round(p[0]/gbk),by=Math.round(p[1]/gbk);for(var dx=-1;dx<=1;dx++)for(var dy=-1;dy<=1;dy++){var arr=gb[(bx+dx)+","+(by+dy)];if(arr)for(var i=0;i<arr.length;i++)if(Math.hypot(arr[i][0]-p[0],arr[i][1]-p[1])<minGap)return true;}return false;}
+  function gMark(p){var k=Math.round(p[0]/gbk)+","+Math.round(p[1]/gbk);(gb[k]=gb[k]||[]).push(p);}
+  var fRuns=[];
+  vRuns.forEach(function(run){var cur=run.filter(function(p){if(gTooClose(p))return false;gMark(p);return true;});if(cur.length)fRuns.push(cur);});
+  var pts=[];fRuns.forEach(function(run){run.forEach(function(p){pts.push(p);});});
+  return {points:pts,runs:fRuns,areaM2:r.inside*cell*cell/1e6,maxD:df.maxD,cell:cell,nLevels:levels.length};
 }
 // regrouper les contours par lettre : chaque contour extérieur + ses contre-formes
 function groupLetters(loops){
@@ -771,6 +780,28 @@ function orderRunsNN(runs){
     if(bi<0)break;used[bi]=true;order.push(brev?runs[bi].slice().reverse():runs[bi]);
   }
   return order;
+}
+
+// largeur du trait le plus fin du dessin (pour proposer un module qui passe dans la graisse)
+function computeMinStroke(loops){
+  if(!loops||!loops.length)return null;
+  var b=computeBbox(loops),diag=Math.hypot(b.maxX-b.minX,b.maxY-b.minY);
+  var cell=Math.max(0.8,diag/700);
+  var r=rasterize(loops,cell);
+  if(r.w*r.h>1.2e6){cell*=Math.sqrt(r.w*r.h/1.2e6);r=rasterize(loops,cell);}
+  if(!r.inside)return null;
+  var D=distanceField(r).D;
+  function Dat(x,y){var i=Math.round((x-r.ox)/r.cell-0.5),j=Math.round((y-r.oy)/r.cell-0.5);if(i<0||j<0||i>=r.w||j>=r.h)return 0;return D[j*r.w+i];}
+  var medials=chainPolylines(traceSkeleton(skeletonize(r.mask,r.w,r.h),r.w,r.h,r,cell),cell*3);
+  var minW=Infinity;
+  medials.forEach(function(poly){
+    if(poly.length<2)return;
+    var ds=poly.map(function(p){return Dat(p[0],p[1]);}).filter(function(d){return d>cell;}).sort(function(a,b){return a-b;});
+    if(!ds.length)return;
+    var med=ds[Math.floor(ds.length/2)];
+    if(2*med<minW)minW=2*med;
+  });
+  return isFinite(minW)?Math.round(minW):null;
 }
 
 /* ============================ FILL (scanline, even-odd, clipped) ============================ */
@@ -1279,7 +1310,8 @@ function updateImportInfo(sourceLabel){
   var w=Math.round(state.bbox.maxX-state.bbox.minX), h=Math.round(state.bbox.maxY-state.bbox.minY);
   info.className="";
   info.innerHTML='<div style="font-weight:600;color:var(--tx);word-break:break-all">'+esc(state.fileName||sourceLabel||"design")+'</div>'
-    +'<div class="mono" style="margin-top:4px">Dimensions : '+w+' × '+h+' mm <span style="color:var(--tx3)">('+(w/10).toFixed(1)+' × '+(h/10).toFixed(1)+' cm)</span></div>';
+    +'<div class="mono" style="margin-top:4px">Dimensions : '+w+' × '+h+' mm <span style="color:var(--tx3)">('+(w/10).toFixed(1)+' × '+(h/10).toFixed(1)+' cm)</span></div>'
+    +(state.minStrokeW?'<div class="mono" style="margin-top:2px">Trait le plus fin (graisse) : <b>'+state.minStrokeW+' mm</b></div>':'');
   var st=contourStats(),wf=document.getElementById("wfStatus");
   var parts='<span style="color:#4FA8FF">●</span> '+st.closed+' fermé'+(st.closed>1?'s':'')
     +' &nbsp;<span style="color:#FF5C5C">●</span> '+st.holes+' contre-forme'+(st.holes>1?'s':'')
@@ -1299,6 +1331,7 @@ function finalizeGeometry(segsMm, loopsMm, sourceLabel){
   state.loops=fr.loops;
   state.framesRemoved=fr.removed;
   state.bbox=computeBbox(state.designSegs.length?state.designSegs:state.loops);
+  state.minStrokeW=state.loops.length?computeMinStroke(state.loops):null;
   state.ledPts=[];state.wireLoops=[];state.bands=[];state.modulesPlaced=[];state.plan=null;
   document.getElementById("vpEmpty").style.display="none";
   document.getElementById("vpTools").style.display="flex";
@@ -1407,16 +1440,23 @@ function populateModulesForFront(){
   selM.disabled = !(state.loops.length>0);
   if(D==null){selM.innerHTML='<option value="">— saisis d\'abord un fond/face —</option>';return;}
   var matches=state.modules.filter(function(m){return moduleAdapted(m,D);});
+  // graisse : un module passe partout si sa largeur tient dans le trait le plus fin
+  var minS=state.minStrokeW;
+  function fitsGraisse(m){return minS==null || Math.min(m.len,m.wid) <= minS;}
+  matches.sort(function(a,b){return (fitsGraisse(b)?1:0)-(fitsGraisse(a)?1:0);}); // ceux qui passent d'abord
   var cur=selM.value;
   if(!matches.length){selM.innerHTML='<option value="">aucun module adapté à '+D+' mm</option>';}
   else{selM.innerHTML='<option value="">— choisir —</option>'+matches.map(function(m){
     var np=resolvePose(m,D);
-    var tag=(np&&np.front!==D)?(' (config '+np.front+' mm)'):'';
-    return '<option value="'+m.id+'">'+esc(m.name)+tag+'</option>';
+    var tag=(np&&np.front!==D)?(' · config '+np.front+' mm'):'';
+    var gr=minS==null?'':(fitsGraisse(m)?' ✓ passe':(' ⚠ trop large ('+Math.min(m.len,m.wid)+'>'+minS+'mm)'));
+    return '<option value="'+m.id+'">'+esc(m.name)+tag+gr+'</option>';
   }).join("");
-  // sélection auto si un seul module adapté
-  if(matches.length===1) selM.value=matches[0].id;
-  else if(cur&&matches.find(function(m){return m.id===cur;}))selM.value=cur;
+  // sélection auto : le 1er module qui passe la graisse, sinon le seul adapté
+  var firstFit=matches.find(fitsGraisse);
+  if(cur&&matches.find(function(m){return m.id===cur;}))selM.value=cur;
+  else if(firstFit)selM.value=firstFit.id;
+  else if(matches.length===1)selM.value=matches[0].id;
   }
 }
 function esc(s){return (s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
