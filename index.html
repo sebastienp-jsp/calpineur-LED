@@ -627,9 +627,6 @@ function resample(poly,sp){
   function lastP(){return pts[pts.length-1];}
   for(var i=1;i<poly.length;i++){
     var a=poly[i-1],b=poly[i],seg=Math.hypot(b[0]-a[0],b[1]-a[1]);
-    // angle marqué -> forcer un module au coin
-    if(i<poly.length-1){var c=poly[i+1],v1x=b[0]-a[0],v1y=b[1]-a[1],v2x=c[0]-b[0],v2y=c[1]-b[1],l1=Math.hypot(v1x,v1y),l2=Math.hypot(v2x,v2y);
-      if(l1>1e-6&&l2>1e-6){var cs=(v1x*v2x+v1y*v2y)/(l1*l2);if(cs<0.55&&Math.hypot(b[0]-lastP()[0],b[1]-lastP()[1])>sp*0.4){pts.push(b);acc=0;continue;}}}
     while(acc+seg>=sp){var t=(sp-acc)/seg;a=[a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])];pts.push(a);seg=Math.hypot(b[0]-a[0],b[1]-a[1]);acc=0;}
     acc+=seg;
   }
@@ -729,8 +726,25 @@ function buildBandsEngine(loops,opt){
   function gMark(p){var k=Math.round(p[0]/gbk)+","+Math.round(p[1]/gbk);(gb[k]=gb[k]||[]).push(p);}
   var fRuns=[];
   runs.forEach(function(run){var cur=run.filter(function(p){if(gTooClose(p))return false;gMark(p);return true;});if(cur.length)fRuns.push(cur);});
-  var pts=[];fRuns.forEach(function(run){run.forEach(function(p){pts.push(p);});});
-  return {points:pts,runs:fRuns,areaM2:r.inside*cell*cell/1e6,maxD:df.maxD,cell:cell,nLevels:levels.length};
+  // 4) validation d'empreinte : un module ne doit pas dépasser la lettre (champ/contre-forme/extérieur)
+  var ML=opt.moduleLen||50, MW=opt.moduleWid||opt.moduleMin||18, mhx=ML/2, mhy=MW/2;
+  function footprintInside(p,ang){
+    var c=Math.cos(ang),s=Math.sin(ang);
+    var off=[[-mhx,-mhy],[mhx,-mhy],[mhx,mhy],[-mhx,mhy],[0,mhy],[0,-mhy],[mhx,0],[-mhx,0]];
+    for(var i=0;i<off.length;i++){var dx=off[i][0],dy=off[i][1];if(!sampleInside(r,p[0]+dx*c-dy*s,p[1]+dx*s+dy*c))return false;}
+    return true;
+  }
+  var vRuns=[];
+  fRuns.forEach(function(run){
+    var v=[];
+    for(var k=0;k<run.length;k++){
+      var p=run[k], nb=run[k+1]||run[k-1]||p, ang=Math.atan2(nb[1]-p[1], nb[0]-p[0]);
+      if(footprintInside(p,ang))v.push(p);
+    }
+    if(v.length)vRuns.push(v);
+  });
+  var pts=[];vRuns.forEach(function(run){run.forEach(function(p){pts.push(p);});});
+  return {points:pts,runs:vRuns,areaM2:r.inside*cell*cell/1e6,maxD:df.maxD,cell:cell,nLevels:levels.length};
 }
 // regrouper les contours par lettre : chaque contour extérieur + ses contre-formes
 function groupLetters(loops){
