@@ -168,8 +168,11 @@
         <h3><span class="n">01</span> Fond / face</h3>
         <div class="field">
           <label>Profondeur fond/face à réaliser <span class="u">mm</span></label>
-          <input type="number" id="inpFront" min="1" step="1" placeholder="ex. 57">
-          <div class="hint">Saisis la profondeur exacte. Les modules dont une configuration correspond (à ±15 mm près) deviennent sélectionnables ; la config la plus proche est appliquée.</div>
+          <div style="display:flex;gap:8px">
+            <input type="number" id="inpFront" min="1" step="1" placeholder="ex. 57" style="flex:1">
+            <button class="btn primary" id="btnValidFront" style="padding:8px 16px;white-space:nowrap">Valider</button>
+          </div>
+          <div class="hint">Saisis la profondeur exacte puis <b>Valider</b> (ou Entrée). La valeur est arrondie à la dizaine la plus proche (54 → 50, 57 → 60) ; on applique la config du module à cette dizaine, ou la dizaine suivante dans le même sens si elle n'existe pas.</div>
         </div>
         <div class="field">
           <label>Module adapté</label>
@@ -573,18 +576,25 @@ function transfoPlan(N,mod,maxPerLoop,wireLoops){
 
 /* ============================ RUN ============================ */
 function getSelectedModule(){var id=document.getElementById("selMod").value;return state.modules.find(function(m){return m.id===id;});}
-var FRONT_TOL=15; // tolérance (mm) autour des configs d'un module
+var ADAPT_MARGIN=10; // marge (mm) au-delà des configs pour qu'un module reste proposé
 function getFront(){var v=parseFloat(document.getElementById("inpFront").value);return isFinite(v)?v:null;}
-function nearestPose(mod,D){
+// arrondi à la dizaine la plus proche, puis recherche de la config dans le sens de l'arrondi
+function resolvePose(mod,D){
   if(!mod||!mod.poses||!mod.poses.length||D==null)return null;
-  return mod.poses.reduce(function(best,p){return (best===null||Math.abs(p.front-D)<Math.abs(best.front-D))?p:best;},null);
+  var fronts=mod.poses.map(function(p){return p.front;}).sort(function(a,b){return a-b;});
+  var R=Math.round(D/10)*10;       // 54→50, 55→60, 57→60
+  var up=R>D;                       // arrondi vers le haut → on cherche vers le haut
+  var pick=null,i;
+  if(up){ for(i=0;i<fronts.length;i++){if(fronts[i]>=R){pick=fronts[i];break;}} if(pick===null)pick=fronts[fronts.length-1]; }
+  else  { for(i=fronts.length-1;i>=0;i--){if(fronts[i]<=R){pick=fronts[i];break;}} if(pick===null)pick=fronts[0]; }
+  return mod.poses.find(function(p){return p.front===pick;})||null;
 }
 function moduleAdapted(mod,D){
   if(!mod||!mod.poses||!mod.poses.length||D==null)return false;
   var fronts=mod.poses.map(function(p){return p.front;});
-  return D>=Math.min.apply(null,fronts)-FRONT_TOL && D<=Math.max.apply(null,fronts)+FRONT_TOL;
+  return D>=Math.min.apply(null,fronts)-ADAPT_MARGIN && D<=Math.max.apply(null,fronts)+ADAPT_MARGIN;
 }
-function getSelectedPose(){var mod=getSelectedModule();var D=getFront();if(!mod||D==null||!moduleAdapted(mod,D))return null;return nearestPose(mod,D);}
+function getSelectedPose(){var mod=getSelectedModule();var D=getFront();if(!mod||D==null||!moduleAdapted(mod,D))return null;return resolvePose(mod,D);}
 function run(){
   var mod=getSelectedModule(), pose=getSelectedPose(), D=getFront();
   if(!mod||!pose||!state.loops.length)return;
@@ -1008,7 +1018,7 @@ function populateModulesForFront(){
   var cur=selM.value;
   if(!matches.length){selM.innerHTML='<option value="">aucun module adapté à '+D+' mm</option>';}
   else{selM.innerHTML='<option value="">— choisir —</option>'+matches.map(function(m){
-    var np=nearestPose(m,D);
+    var np=resolvePose(m,D);
     var tag=(np&&np.front!==D)?(' (config '+np.front+' mm)'):'';
     return '<option value="'+m.id+'">'+esc(m.name)+tag+'</option>';
   }).join("");
@@ -1105,8 +1115,8 @@ function bind(){
     if(ed){openModal(ed);return;}
     if(dl){if(confirm("Supprimer ce module ?")){state.modules=state.modules.filter(function(m){return m.id!==dl;});saveModules();renderLibrary();renderPoseDetail();updateRunState();}return;}
   };
-  document.getElementById("inpFront").addEventListener("input",onSelFront);
-  document.getElementById("inpFront").addEventListener("change",function(){if(state.plan&&getSelectedPose())run();});
+  document.getElementById("btnValidFront").onclick=validateFront;
+  document.getElementById("inpFront").addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();validateFront();}});
   document.getElementById("selMod").onchange=onSelMod;
   document.getElementById("addPose").onclick=function(){state.modalPoses=scrapePoseRows();state.modalPoses.push(poseDefault());renderPoseRows();};
   document.getElementById("poseRows").onclick=function(e){
@@ -1144,9 +1154,10 @@ function bind(){
   window.addEventListener("resize",resizeCanvas);
 }
 var initScale=null;
-function onSelFront(){
+function validateFront(){
   populateModulesForFront();
   renderPoseDetail();updateRunState();
+  if(state.plan&&getSelectedPose())run();
 }
 function onSelMod(){
   renderPoseDetail();updateRunState();
