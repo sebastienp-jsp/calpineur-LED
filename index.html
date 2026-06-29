@@ -340,7 +340,7 @@ var state={
   modules:[], editId:null,
   rawDxf:null, fileName:null, exportScale:1,
   designSegs:[], loops:[], bbox:null,        // geometry in mm
-  ledPts:[], wireLoops:[], bands:[], litAreaM2:0, gridStep:50,
+  ledPts:[], wireLoops:[], bands:[], modulesPlaced:[], litAreaM2:0, gridStep:50,
   plan:null,
   view:{scale:1,ox:0,oy:0}, drag:null, modalPoses:[]
 };
@@ -722,10 +722,42 @@ function buildBandsEngine(loops,opt){
     var rp=resample(rr,opt.maxsp).filter(function(p){return !nearIso(p);});
     if(rp.length)runs.push(rp);
   });
-  var pts=[];runs.forEach(function(run){run.forEach(p=>pts.push(p));});
-  return {points:pts,runs:runs,areaM2:r.inside*cell*cell/1e6,maxD:df.maxD,cell:cell,nLevels:levels.length};
+  // 3) anti-chevauchement : on impose un espacement minimum (les bandes iso, ajoutées en premier, sont prioritaires)
+  var minGap=Math.min(Math.max(opt.moduleLen||opt.moduleMin||40, opt.moduleWid||0)*0.95, opt.maxsp*0.8, opt.bande*0.8);
+  var gb={},gbk=Math.max(minGap,1);
+  function gTooClose(p){var bx=Math.round(p[0]/gbk),by=Math.round(p[1]/gbk);for(var dx=-1;dx<=1;dx++)for(var dy=-1;dy<=1;dy++){var arr=gb[(bx+dx)+","+(by+dy)];if(arr)for(var i=0;i<arr.length;i++)if(Math.hypot(arr[i][0]-p[0],arr[i][1]-p[1])<minGap)return true;}return false;}
+  function gMark(p){var k=Math.round(p[0]/gbk)+","+Math.round(p[1]/gbk);(gb[k]=gb[k]||[]).push(p);}
+  var fRuns=[];
+  runs.forEach(function(run){var cur=run.filter(function(p){if(gTooClose(p))return false;gMark(p);return true;});if(cur.length)fRuns.push(cur);});
+  var pts=[];fRuns.forEach(function(run){run.forEach(function(p){pts.push(p);});});
+  return {points:pts,runs:fRuns,areaM2:r.inside*cell*cell/1e6,maxD:df.maxD,cell:cell,nLevels:levels.length};
 }
-// fin moteur
+// regrouper les contours par lettre : chaque contour extérieur + ses contre-formes
+function groupLetters(loops){
+  if(loops.length<=1)return [loops.slice()];
+  var depth=loops.map(function(p,i){var d=0;loops.forEach(function(q,j){if(j!==i&&pointInPoly(p[0],q))d++;});return d;});
+  var groups={},order=[];
+  loops.forEach(function(p,i){
+    var root=i;
+    if(depth[i]>0){var best=-1,bestA=Infinity;loops.forEach(function(q,j){if(j!==i&&depth[j]===0&&pointInPoly(p[0],q)){var a=Math.abs(polyArea(q));if(a<bestA){bestA=a;best=j;}}});if(best>=0)root=best;}
+    if(!groups[root]){groups[root]=[];order.push(root);}
+    groups[root].push(p);
+  });
+  return order.map(function(k){return groups[k];});
+}
+// ordonner les tronçons d'une lettre au plus proche voisin (fil plus propre)
+function orderRunsNN(runs){
+  if(runs.length<2)return runs.slice();
+  var used=new Array(runs.length).fill(false),order=[runs[0]];used[0]=true;
+  for(var n=1;n<runs.length;n++){
+    var last=order[order.length-1],lend=last[last.length-1],bi=-1,bd=1e30,brev=false;
+    for(var i=0;i<runs.length;i++){if(used[i])continue;var a=runs[i][0],b=runs[i][runs[i].length-1];
+      var da=Math.hypot(a[0]-lend[0],a[1]-lend[1]),db=Math.hypot(b[0]-lend[0],b[1]-lend[1]);
+      if(da<bd){bd=da;bi=i;brev=false;}if(db<bd){bd=db;bi=i;brev=true;}}
+    if(bi<0)break;used[bi]=true;order.push(brev?runs[bi].slice().reverse():runs[bi]);
+  }
+  return order;
+}
 
 /* ============================ FILL (scanline, even-odd, clipped) ============================ */
 function fillCalepinage(loops,bande,edge,maxsp,size){
@@ -826,14 +858,38 @@ function run(){
   // calcul lourd différé pour laisser l'indicateur s'afficher (pas de gel d'UI)
   setTimeout(function(){
     var maxPerLoop=Math.max(1,parseInt(mod.loop)||20);
-    var opt={edge:pose.edge, bande:pose.bande, maxsp:pose.maxsp, moduleMin:Math.min(mod.len,mod.wid)};
-    var res=buildBandsEngine(state.loops, opt);
-    state.ledPts=res.points;
-    state.bands=res.runs;            // tracés des bandes (suivent la lettre)
-    state.litAreaM2=res.areaM2;
-    state.wireLoops=chunkLoops(res.points,maxPerLoop);
+    var opt={edge:pose.edge, bande:pose.bande, maxsp:pose.maxsp, moduleMin:Math.min(mod.len,mod.wid), moduleLen:Math.max(mod.len,mod.wid), moduleWid:Math.min(mod.len,mod.wid)};
+    var letters=groupLetters(state.loops);
+    var placed=[], allRuns=[], wireLoops=[], area=0, loopIdx=0;
+    letters.forEach(function(letterLoops){
+      var res=buildBandsEngine(letterLoops, opt);
+      area+=res.areaM2;
+      var runs=orderRunsNN(res.runs);
+      // déplier en modules orientés (angle = tangente le long de la bande)
+      var pts=[];
+      runs.forEach(function(run){
+        allRuns.push(run);
+        for(var k=0;k<run.length;k++){
+          var p=run[k], nb=run[k+1]||run[k-1]||p;
+          pts.push({x:p[0], y:p[1], ang:Math.atan2(nb[1]-p[1], nb[0]-p[0])});
+        }
+      });
+      // boucles : découpées DANS la lettre uniquement (indicatif pour le transfo, étape ultérieure)
+      for(var i=0;i<pts.length;i+=maxPerLoop){
+        var chunk=pts.slice(i,i+maxPerLoop);
+        chunk.forEach(function(m){m.loop=loopIdx;});
+        wireLoops.push(chunk.map(function(m){return [m.x,m.y];}));
+        placed.push.apply(placed, chunk);
+        loopIdx++;
+      }
+    });
+    state.modulesPlaced=placed;
+    state.ledPts=placed.map(function(m){return [m.x,m.y];});
+    state.bands=allRuns;
+    state.litAreaM2=area;
+    state.wireLoops=wireLoops;
     state.gridStep=Math.max(10,pose.bande);
-    state.plan=transfoPlan(res.points.length,mod,maxPerLoop,state.wireLoops);
+    state.plan=transfoPlan(state.ledPts.length,mod,maxPerLoop,state.wireLoops);
     // afficher le résultat : on quitte le fil de fer et on montre design + LED + câblage
     document.getElementById("tWireframe").checked=false;
     document.getElementById("btnWireframeStep").classList.remove("primary");
@@ -844,9 +900,9 @@ function run(){
     renderResults(mod,pose,D);
     draw();
     document.getElementById("btnRun").disabled=false;
-    document.getElementById("btnExport").disabled=res.points.length===0;
-    document.getElementById("btnBom").disabled=res.points.length===0;
-    setPill(res.points.length?"ready":"idle", res.points.length?(res.points.length+" modules placés · "+state.wireLoops.length+" boucles · fond/face "+D+" mm"):"aucun point");
+    document.getElementById("btnExport").disabled=state.ledPts.length===0;
+    document.getElementById("btnBom").disabled=state.ledPts.length===0;
+    setPill(state.ledPts.length?"ready":"idle", state.ledPts.length?(state.ledPts.length+" modules · "+letters.length+" lettre"+(letters.length>1?"s":"")+" · "+state.wireLoops.length+" boucles · config "+pose.front+" mm"):"aucun point");
   },30);
 }
 
@@ -1032,29 +1088,22 @@ function draw(){
   if((showWire||showLed)&&state.ledPts.length){
     var mod=getSelectedModule();
     var Lm=mod&&mod.len?mod.len:50, Wm=mod&&mod.wid?mod.wid:18;
-    var maxPerLoop=mod&&mod.loop?Math.max(1,parseInt(mod.loop)||20):20;
-    // fils : relient les modules consécutifs de chaque boucle (suivent les bandes), couleur par boucle
+    // fils : relient les modules d'une même boucle (dans une seule lettre), couleur par boucle
     if(showWire){
       ctx.lineWidth=1.4;
       state.wireLoops.forEach(function(lp,i){
         if(lp.length<2)return;
-        ctx.strokeStyle=LOOP_COLORS[i%LOOP_COLORS.length];ctx.globalAlpha=0.55;
+        ctx.strokeStyle=LOOP_COLORS[i%LOOP_COLORS.length];ctx.globalAlpha=0.5;
         ctx.beginPath();
         lp.forEach(function(q,k){var s=W2S(q[0],q[1]);if(k===0)ctx.moveTo(s[0],s[1]);else ctx.lineTo(s[0],s[1]);});
         ctx.stroke();ctx.globalAlpha=1;
       });
     }
     // modules : empreinte réelle Lm×Wm orientée le long de la bande
-    if(showLed){
-      var gi=0;
-      state.bands.forEach(function(run){
-        for(var k=0;k<run.length;k++){
-          var p=run[k], nb=run[k+1]||run[k-1]||p;
-          var ang=Math.atan2(nb[1]-p[1], nb[0]-p[0]);
-          var col=showWire?LOOP_COLORS[Math.floor(gi/maxPerLoop)%LOOP_COLORS.length]:"#FFB23E";
-          drawModule(p,ang,Lm,Wm,col);
-          gi++;
-        }
+    if(showLed&&state.modulesPlaced){
+      state.modulesPlaced.forEach(function(m){
+        var col=showWire?LOOP_COLORS[(m.loop||0)%LOOP_COLORS.length]:"#FFB23E";
+        drawModule([m.x,m.y], m.ang||0, Lm, Wm, col);
       });
     }
   }
@@ -1236,7 +1285,7 @@ function finalizeGeometry(segsMm, loopsMm, sourceLabel){
   state.loops=fr.loops;
   state.framesRemoved=fr.removed;
   state.bbox=computeBbox(state.designSegs.length?state.designSegs:state.loops);
-  state.ledPts=[];state.wireLoops=[];state.bands=[];state.plan=null;
+  state.ledPts=[];state.wireLoops=[];state.bands=[];state.modulesPlaced=[];state.plan=null;
   document.getElementById("vpEmpty").style.display="none";
   document.getElementById("vpTools").style.display="flex";
   document.getElementById("stLoops").textContent=state.loops.length;
