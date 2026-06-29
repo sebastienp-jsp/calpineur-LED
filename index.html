@@ -698,6 +698,16 @@ function extendEnds(runs,r,cell){
     return arr;
   });
 }
+function smoothPolyline(p,iters){
+  if(p.length<3)return p.map(function(q){return [q[0],q[1]];});
+  var pts=p.map(function(q){return [q[0],q[1]];});
+  for(var it=0;it<iters;it++){
+    var np=[pts[0]];
+    for(var i=1;i<pts.length-1;i++)np.push([(pts[i-1][0]+2*pts[i][0]+pts[i+1][0])/4,(pts[i-1][1]+2*pts[i][1]+pts[i+1][1])/4]);
+    np.push(pts[pts.length-1]);pts=np;
+  }
+  return pts;
+}
 function buildBandsEngine(loops,opt){
   var b=computeBbox(loops),diag=Math.hypot(b.maxX-b.minX,b.maxY-b.minY);
   var cell=Math.max(0.5,Math.min(opt.bande/6,opt.edge/3,opt.maxsp/6,diag/1500));
@@ -714,36 +724,46 @@ function buildBandsEngine(loops,opt){
   }
   function fitOrPull(x,y,ang,tx,ty){
     if(footprintInside(x,y,ang))return [x,y];
-    var st,sgn;
-    // 1) décalage le long de l'axe, dans les deux sens (couvre les pointes/bouts de trait)
-    for(st=1;st<=Math.ceil(ML/cell)+1;st++){for(var si=0;si<2;si++){sgn=si?1:-1;var ax=x+sgn*tx*cell*st,ay=y+sgn*ty*cell*st;if(footprintInside(ax,ay,ang))return [ax,ay];}}
-    // 2) ramener vers l'intérieur (gradient de D) pour les bords/courbes
+    var st;
+    for(st=1;st<=Math.ceil(ML/cell)+1;st++){for(var si=0;si<2;si++){var sg=si?1:-1,ax=x+sg*tx*cell*st,ay=y+sg*ty*cell*st;if(footprintInside(ax,ay,ang))return [ax,ay];}}
     var gx=Dat(x+cell,y)-Dat(x-cell,y),gy=Dat(x,y+cell)-Dat(x,y-cell),gl=Math.hypot(gx,gy);
     if(gl>1e-9){gx/=gl;gy/=gl;for(st=1;st<=Math.ceil(MW/cell)+2;st++){var ix=x+gx*cell*st,iy=y+gy*cell*st;if(footprintInside(ix,iy,ang))return [ix,iy];}}
     return null;
   }
-  // axe médian (squelette) de chaque trait, prolongé jusqu'aux extrémités
+  // 1) traits-guides "racetrack" = contours décalés vers l'intérieur (iso à côté, côté+bande, …) — lisses
+  var guides=[], isoPts=[];
+  for(var L=opt.edge; L<=df.maxD-cell*1.5; L+=opt.bande){
+    chain(marchingSquares(D,r,L),cell*1.6).forEach(function(pl){
+      if(pl.length<4)return; var sm=smoothPolyline(pl,2); guides.push(sm); sm.forEach(function(pp){isoPts.push(pp);});
+    });
+  }
+  // 2) axe central pour les traits fins / centres larges non couverts par un racetrack
+  var bucket=Math.max(opt.bande,1),grid={};
+  isoPts.forEach(function(p){var k=Math.round(p[0]/bucket)+","+Math.round(p[1]/bucket);(grid[k]=grid[k]||[]).push(p);});
+  function nearIso(p){var bx=Math.round(p[0]/bucket),by=Math.round(p[1]/bucket);for(var dx=-1;dx<=1;dx++)for(var dy=-1;dy<=1;dy++){var a=grid[(bx+dx)+","+(by+dy)];if(a)for(var i=0;i<a.length;i++)if(Math.hypot(a[i][0]-p[0],a[i][1]-p[1])<opt.bande*0.6)return true;}return false;}
   var medials=extendEnds(chainPolylines(traceSkeleton(skeletonize(r.mask,r.w,r.h),r.w,r.h,r,cell),cell*3),r,cell);
-  // le long de chaque axe, à chaque pas (entre-modules), une rangée de N modules en travers (N selon la largeur locale)
-  var mods=[];
   medials.forEach(function(poly){
-    var samples=resample(poly,opt.maxsp);
-    for(var k=0;k<samples.length;k++){
-      var p=samples[k], nb=samples[k+1]||samples[k-1]||p;
-      var tx=nb[0]-p[0],ty=nb[1]-p[1],tl=Math.hypot(tx,ty)||1;tx/=tl;ty/=tl;
-      var nx=-ty,ny=tx,ang=Math.atan2(ty,tx);      // tangente le long du trait, normale en travers
-      var h=Dat(p[0],p[1]);                          // demi-largeur locale
-      var usable=2*h-2*opt.edge, offsets;
-      if(usable<=0){offsets=[0];}                    // trait fin → 1 bande centrée
-      else{var nGaps=Math.max(1,Math.ceil(usable/opt.bande)),nB=nGaps+1,sp=usable/nGaps;offsets=[];for(var j=0;j<nB;j++)offsets.push(-usable/2+j*sp);} // 2,3… bandes centrées, ≤ bande, à ≤ côté du bord
-      for(var oi=0;oi<offsets.length;oi++){var o=offsets[oi];var q=fitOrPull(p[0]+nx*o,p[1]+ny*o,ang,tx,ty);if(q)mods.push({x:q[0],y:q[1],ang:ang});}
+    var sm=smoothPolyline(poly,2),run=[];
+    sm.forEach(function(pp){if(!nearIso(pp)){run.push(pp);}else{if(run.length>=2)guides.push(run);run=[];}});
+    if(run.length>=2)guides.push(run);
+  });
+  // 3) aligner les modules le long de chaque trait-guide, orientés le long du guide (tangente lissée)
+  var mods=[];
+  guides.forEach(function(g){
+    var s=resample(g,opt.maxsp);
+    for(var k=0;k<s.length;k++){
+      var a=s[Math.max(0,k-1)], c2=s[Math.min(s.length-1,k+1)];
+      var tx=c2[0]-a[0],ty=c2[1]-a[1],tl=Math.hypot(tx,ty)||1;tx/=tl;ty/=tl;
+      var ang=Math.atan2(ty,tx);
+      var q=fitOrPull(s[k][0],s[k][1],ang,tx,ty);
+      if(q)mods.push({x:q[0],y:q[1],ang:ang});
     }
   });
-  // anti-chevauchement aux jonctions de traits
-  var minGap=Math.min(Math.max(ML,MW)*0.85, opt.maxsp*0.85, opt.bande*0.85),bk=Math.max(minGap,1),grid={},kept=[];
-  function near(m){var bx=Math.round(m.x/bk),by=Math.round(m.y/bk);for(var dx=-1;dx<=1;dx++)for(var dy=-1;dy<=1;dy++){var a=grid[(bx+dx)+","+(by+dy)];if(a)for(var i=0;i<a.length;i++)if(Math.hypot(a[i].x-m.x,a[i].y-m.y)<minGap)return true;}return false;}
-  mods.forEach(function(m){if(!near(m)){kept.push(m);var key=Math.round(m.x/bk)+","+Math.round(m.y/bk);(grid[key]=grid[key]||[]).push(m);}});
-  return {modules:kept, areaM2:r.inside*cell*cell/1e6, maxD:df.maxD, cell:cell};
+  // 4) anti-chevauchement
+  var minGap=Math.min(Math.max(ML,MW)*0.85, opt.maxsp*0.85, opt.bande*0.85),bk=Math.max(minGap,1),gg={},kept=[];
+  function near(m){var bx=Math.round(m.x/bk),by=Math.round(m.y/bk);for(var dx=-1;dx<=1;dx++)for(var dy=-1;dy<=1;dy++){var a=gg[(bx+dx)+","+(by+dy)];if(a)for(var i=0;i<a.length;i++)if(Math.hypot(a[i].x-m.x,a[i].y-m.y)<minGap)return true;}return false;}
+  mods.forEach(function(m){if(!near(m)){kept.push(m);var key=Math.round(m.x/bk)+","+Math.round(m.y/bk);(gg[key]=gg[key]||[]).push(m);}});
+  return {modules:kept, guides:guides, areaM2:r.inside*cell*cell/1e6, maxD:df.maxD, cell:cell};
 }
 // regrouper les contours par lettre : chaque contour extérieur + ses contre-formes
 function groupLetters(loops){
@@ -906,10 +926,11 @@ function run(){
     var maxPerLoop=Math.max(1,parseInt(mod.loop)||20);
     var opt={edge:pose.edge, bande:pose.bande, maxsp:pose.maxsp, moduleMin:Math.min(mod.len,mod.wid), moduleLen:Math.max(mod.len,mod.wid), moduleWid:Math.min(mod.len,mod.wid)};
     var letters=groupLetters(state.loops);
-    var placed=[], wireLoops=[], area=0, loopIdx=0;
+    var placed=[], guides=[], wireLoops=[], area=0, loopIdx=0;
     letters.forEach(function(letterLoops){
       var res=buildBandsEngine(letterLoops, opt);
       area+=res.areaM2;
+      if(res.guides)res.guides.forEach(function(g){guides.push(g);});
       var mods=nnOrderModules(res.modules);   // ordre au plus proche voisin pour un câblage propre
       for(var i=0;i<mods.length;i+=maxPerLoop){
         var chunk=mods.slice(i,i+maxPerLoop);
@@ -921,7 +942,7 @@ function run(){
     });
     state.modulesPlaced=placed;
     state.ledPts=placed.map(function(m){return [m.x,m.y];});
-    state.bands=[];
+    state.bands=guides;
     state.litAreaM2=area;
     state.wireLoops=wireLoops;
     state.gridStep=Math.max(10,pose.bande);
@@ -1121,6 +1142,16 @@ function draw(){
   // câblage + modules (façon LED Wizard : modules à l'échelle, orientés, reliés, colorés par boucle)
   var showWire=document.getElementById("tWire").checked;
   var showLed=document.getElementById("tLed").checked;
+  // traits-guides (ligne de prépositionnement qui suit la lettre) — gris discret
+  if((showLed||showWire)&&state.bands&&state.bands.length){
+    ctx.lineWidth=1;ctx.strokeStyle="rgba(170,190,215,0.30)";
+    state.bands.forEach(function(g){
+      if(g.length<2)return;
+      ctx.beginPath();
+      g.forEach(function(q,k){var s=W2S(q[0],q[1]);if(k===0)ctx.moveTo(s[0],s[1]);else ctx.lineTo(s[0],s[1]);});
+      ctx.stroke();
+    });
+  }
   if((showWire||showLed)&&state.ledPts.length){
     var mod=getSelectedModule();
     var Lm=mod&&mod.len?mod.len:50, Wm=mod&&mod.wid?mod.wid:18;
