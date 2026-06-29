@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calepineur LED — lettres boîtier</title>
+<style>
+  :root{
+    --bg:#0F1216; --panel:#161A21; --panel2:#1B2028; --line:#2A313C; --line2:#363F4D;
+    --tx:#E7EAEF; --mut:#8B95A4; --dim:#5C6675;
+    --led:#FFB23E; --led-glow:rgba(255,178,62,.55);
+    --wire:#4FB6C4;
+    --ok:#7FD86B; --warn:#FFC759; --bad:#FF6B6B;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Roboto Mono",Menlo,Consolas,monospace;
+    --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;cursor:pointer}
+  input,select{font-family:inherit}
+  .app{display:grid;grid-template-rows:auto 1fr auto;height:100vh}
+
+  /* top bar */
+  .top{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:baseline;gap:9px;margin-right:6px}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--led);box-shadow:0 0 10px var(--led-glow);align-self:center}
+  .brand b{font-weight:600;letter-spacing:.2px}
+  .brand span{color:var(--mut);font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1.5px}
+  .top .spacer{flex:1}
+  .btn{background:var(--panel2);border:1px solid var(--line2);color:var(--tx);padding:8px 13px;border-radius:7px;font-size:13px;display:inline-flex;align-items:center;gap:7px;transition:.12s}
+  .btn:hover{border-color:#4a5666;background:#222933}
+  .btn.primary{background:var(--led);color:#241700;border-color:var(--led);font-weight:600}
+  .btn.primary:hover{background:#ffc05f}
+  .btn.ghost{background:transparent}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .fname{font-family:var(--mono);font-size:12px;color:var(--mut);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* layout */
+  .body{display:grid;grid-template-columns:312px 1fr 320px;overflow:hidden}
+  .col{overflow-y:auto;background:var(--panel);display:flex;flex-direction:column}
+  .col.left{border-right:1px solid var(--line)}
+  .col.right{border-left:1px solid var(--line)}
+  .viewport{position:relative;background:#0a0c0f;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+  .vp-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--dim);text-align:center;padding:30px}
+  .vp-empty svg{opacity:.5}
+  .vp-tools{position:absolute;top:12px;left:12px;display:flex;gap:6px;flex-wrap:wrap}
+  .chip{background:rgba(22,26,33,.92);border:1px solid var(--line2);color:var(--mut);font-size:11px;padding:6px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);user-select:none}
+  .chip input{accent-color:var(--led)}
+  .chip.toggle{cursor:pointer}
+  .legend{position:absolute;bottom:12px;left:12px;background:rgba(22,26,33,.92);border:1px solid var(--line2);border-radius:7px;padding:9px 11px;font-size:11px;font-family:var(--mono);max-width:260px;display:none}
+  .legend.show{display:block}
+  .legend .row{display:flex;align-items:center;gap:7px;margin:3px 0;color:var(--mut)}
+  .legend .sw{width:11px;height:11px;border-radius:3px}
+
+  /* panel sections */
+  .sec{border-bottom:1px solid var(--line);padding:15px 16px}
+  .sec h3{margin:0 0 12px;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--mut);font-weight:600;display:flex;align-items:center;gap:8px}
+  .sec h3 .n{font-family:var(--mono);color:var(--dim);font-weight:400}
+  .field{margin-bottom:11px}
+  .field:last-child{margin-bottom:0}
+  .field label{display:block;font-size:12px;color:var(--mut);margin-bottom:5px}
+  .field .u{color:var(--dim);font-family:var(--mono);font-size:11px}
+  input[type=text],input[type=number],select{width:100%;background:var(--panel2);border:1px solid var(--line2);color:var(--tx);padding:8px 10px;border-radius:6px;font-size:13px;font-family:var(--mono)}
+  input:focus,select:focus{outline:none;border-color:var(--led)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  select{font-family:var(--sans)}
+
+  /* module library */
+  .mod-list{display:flex;flex-direction:column;gap:7px}
+  .mod{border:1px solid var(--line2);border-radius:8px;padding:10px 11px;background:var(--panel2);cursor:pointer;transition:.12s}
+  .mod:hover{border-color:#4a5666}
+  .mod.active{border-color:var(--led);background:#211a0d}
+  .mod .mh{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .mod .mn{font-weight:600;font-size:13px}
+  .mod .mw{font-family:var(--mono);font-size:11px;color:var(--led)}
+  .mod .md{font-family:var(--mono);font-size:11px;color:var(--mut);margin-top:5px;line-height:1.5}
+  .mod .acts{display:flex;gap:6px;margin-top:8px}
+  .mini{font-size:11px;padding:4px 9px;border-radius:5px;background:transparent;border:1px solid var(--line2);color:var(--mut)}
+  .mini:hover{color:var(--tx);border-color:var(--line2)}
+  .empty-note{color:var(--dim);font-size:12px;line-height:1.6;font-style:italic}
+
+  /* results */
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .stat{background:var(--panel2);border-radius:8px;padding:11px 12px}
+  .stat .l{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+  .stat .v{font-size:22px;font-weight:600;font-family:var(--mono);margin-top:3px}
+  .stat .v small{font-size:12px;color:var(--mut);font-weight:400}
+  .stat.accent .v{color:var(--led)}
+
+  table.tf{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;margin-top:4px}
+  table.tf th{text-align:right;color:var(--dim);font-weight:400;padding:5px 6px;border-bottom:1px solid var(--line);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+  table.tf th:first-child{text-align:left}
+  table.tf td{text-align:right;padding:6px;border-bottom:1px solid var(--line)}
+  table.tf td:first-child{text-align:left}
+  table.tf tr.best td{color:var(--led);background:#1d1708}
+  table.tf tr.invalid td{color:var(--dim);text-decoration:line-through}
+
+  .plan-list{display:flex;flex-direction:column;gap:7px;margin-top:4px}
+  .tx-row{background:var(--panel2);border-radius:7px;padding:9px 11px;font-family:var(--mono);font-size:12px;border-left:3px solid var(--wire)}
+  .tx-row .th{display:flex;justify-content:space-between;color:var(--tx);font-weight:600}
+  .tx-row .ts{color:var(--mut);font-size:11px;margin-top:3px}
+  .bar{height:5px;border-radius:3px;background:var(--line);margin-top:6px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--wire)}
+
+  .alert{font-size:12px;line-height:1.55;padding:9px 11px;border-radius:7px;margin-bottom:8px;display:flex;gap:9px}
+  .alert:last-child{margin-bottom:0}
+  .alert .ic{flex-shrink:0;margin-top:1px}
+  .alert.ok{background:#13241a;color:var(--ok)}
+  .alert.warn{background:#262013;color:var(--warn)}
+  .alert.bad{background:#2a1616;color:var(--bad)}
+
+  /* status bar */
+  .status{display:flex;align-items:center;gap:18px;padding:7px 16px;background:var(--panel);border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--mut)}
+  .status .k{color:var(--dim)}
+  .status .spacer{flex:1}
+  .pill{padding:2px 9px;border-radius:20px;font-size:10px;letter-spacing:.5px;text-transform:uppercase}
+  .pill.idle{background:var(--line);color:var(--mut)}
+  .pill.ready{background:#1d2b1f;color:var(--ok)}
+
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(5,7,10,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+  .overlay.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line2);border-radius:14px;width:560px;max-width:100%;max-height:92vh;overflow-y:auto}
+  .modal header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .modal header h2{margin:0;font-size:16px;font-weight:600}
+  .modal .mbody{padding:18px 20px}
+  .modal footer{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:9px}
+  .sub{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin:16px 0 9px}
+  .sub:first-child{margin-top:0}
+  .pose-head,.pose-row{display:grid;grid-template-columns:repeat(5,1fr) 30px;gap:6px;align-items:center}
+  .pose-head{margin-bottom:5px}
+  .pose-head span{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.3px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pose-row{margin-bottom:6px}
+  .pose-row input{padding:7px 4px;text-align:center;font-size:12px}
+  .pose-row .rm{background:transparent;border:1px solid var(--line2);color:var(--mut);border-radius:5px;height:32px;font-size:15px;line-height:1;padding:0}
+  .pose-row .rm:hover{color:var(--bad);border-color:var(--bad)}
+  .x{background:none;border:none;color:var(--mut);font-size:20px;line-height:1}
+  .hint{font-size:11px;color:var(--dim);margin-top:5px;line-height:1.5}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:5px;border:2px solid var(--panel)}
+  ::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOP BAR -->
+  <div class="top">
+    <div class="brand"><span class="dot"></span><b>Calepineur LED</b><span>boîtier · DXF</span></div>
+    <button class="btn ghost" id="btnImport"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>Importer DXF / PDF / AI</button>
+    <input type="file" id="fileInput" accept=".dxf,.pdf,.ai" style="display:none">
+    <span class="fname" id="fileName">aucun fichier</span>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="btnBom" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Nomenclature</button>
+    <button class="btn primary" id="btnExport" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v12M7 15l5 5 5-5M5 4h14"/></svg>Exporter DXF</button>
+  </div>
+
+  <!-- BODY -->
+  <div class="body">
+
+    <!-- LEFT : library + project params -->
+    <div class="col left">
+      <div class="sec">
+        <h3><span class="n">01</span> Bibliothèque de modules <span style="flex:1"></span></h3>
+        <button class="btn ghost" id="btnAddMod" style="width:100%;justify-content:center;margin-bottom:12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Nouveau module</button>
+        <div class="mod-list" id="modList"></div>
+      </div>
+
+      <div class="sec">
+        <h3><span class="n">02</span> Paramètres de pose</h3>
+        <div class="field">
+          <label>Module sélectionné</label>
+          <select id="selMod"><option value="">— choisir —</option></select>
+        </div>
+        <div class="field">
+          <label>Configuration fond/face</label>
+          <select id="selPose"><option value="">— choisir un module —</option></select>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>Angle d'éclairage <span class="u">°</span></label><input type="number" id="pAngle" value="160" min="60" max="180" step="5"></div>
+          <div class="field"><label>Modules / boucle max</label><input type="number" id="pLoop" value="20" min="1" step="1"></div>
+        </div>
+        <div class="field">
+          <label>Unité du DXF importé</label>
+          <select id="pUnit"><option value="1">Millimètres</option><option value="10">Centimètres</option><option value="25.4">Pouces</option><option value="1000">Mètres</option></select>
+          <div class="hint">S'applique aux <b>DXF</b> : on ramène les coordonnées en mm pour le calcul, puis on réexporte dans l'unité d'origine. Les <b>PDF / AI</b> sont lus en points et convertis automatiquement en mm (sortie DXF en mm).</div>
+        </div>
+        <button class="btn primary" id="btnRun" style="width:100%;justify-content:center;margin-top:6px" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-14 9V3z"/></svg>Calculer le calepinage</button>
+      </div>
+
+      <div class="sec" style="flex:1">
+        <h3><span class="n">03</span> Pose sélectionnée</h3>
+        <div id="poseDetail" class="empty-note">Choisissez un module pour voir ses cotes de pose.</div>
+      </div>
+    </div>
+
+    <!-- VIEWPORT -->
+    <div class="viewport" id="viewport">
+      <canvas id="cv"></canvas>
+      <div class="vp-empty" id="vpEmpty">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        <div>Glissez votre design ici — DXF, PDF ou Illustrator<br>(contours de lettres fermés)</div>
+        <button class="btn" id="btnImport2">Importer un fichier</button>
+      </div>
+      <div class="vp-tools" id="vpTools" style="display:none">
+        <label class="chip toggle"><input type="checkbox" id="tDesign" checked> Design</label>
+        <label class="chip toggle"><input type="checkbox" id="tLed" checked> Points LED</label>
+        <label class="chip toggle"><input type="checkbox" id="tWire"> Câblage</label>
+        <label class="chip toggle"><input type="checkbox" id="tGrid" checked> Grille</label>
+        <span class="chip" id="btnFit" style="cursor:pointer">⤢ Recadrer</span>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <!-- RIGHT : results -->
+    <div class="col right">
+      <div class="sec">
+        <h3><span class="n">04</span> Synthèse</h3>
+        <div class="stat-grid">
+          <div class="stat accent"><div class="l">Modules</div><div class="v" id="sModules">—</div></div>
+          <div class="stat"><div class="l">Boucles</div><div class="v" id="sLoops">—</div></div>
+          <div class="stat"><div class="l">Densité</div><div class="v" id="sDens">—<small> /m²</small></div></div>
+          <div class="stat"><div class="l">Puissance</div><div class="v" id="sPower">—<small> W</small></div></div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h3><span class="n">05</span> Contrôles</h3>
+        <div id="alerts"><div class="empty-note">Lancez un calcul pour obtenir les contrôles d'uniformité et de densité.</div></div>
+      </div>
+
+      <div class="sec">
+        <h3><span class="n">06</span> Choix du transformateur</h3>
+        <div id="tfBlock"><div class="empty-note">Renseignez la puissance/module et le nb max de modules par transfo dans la fiche module.</div></div>
+      </div>
+
+      <div class="sec" style="flex:1">
+        <h3><span class="n">07</span> Plan électrique</h3>
+        <div id="planBlock"><div class="empty-note">Le détail par transfo et par boucle s'affichera ici.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS BAR -->
+  <div class="status">
+    <span><span class="k">curseur</span> <span id="stCur">— , —</span></span>
+    <span><span class="k">zoom</span> <span id="stZoom">100%</span></span>
+    <span><span class="k">contours</span> <span id="stLoops">0</span></span>
+    <span class="spacer"></span>
+    <span class="pill idle" id="stPill">en attente</span>
+  </div>
+</div>
+
+<!-- MODULE MODAL -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <header><h2 id="modalTitle">Nouveau module</h2><button class="x" id="modalClose">×</button></header>
+    <div class="mbody">
+      <div class="sub">Identité</div>
+      <div class="field"><label>Nom / référence</label><input type="text" id="f_name" placeholder="ex. Sloan V-Bar 3L"></div>
+      <div class="sub">Dimensions du module (mm)</div>
+      <div class="grid2">
+        <div class="field"><label>Longueur</label><input type="number" id="f_len" value="50" min="1" step="1"></div>
+        <div class="field"><label>Largeur</label><input type="number" id="f_wid" value="20" min="1" step="1"></div>
+      </div>
+      <div class="sub">Configurations de pose — une ligne par fond/face</div>
+      <div class="pose-head">
+        <span title="Fond / face">Fond/face</span>
+        <span title="Distance entre bandes">Entre bandes</span>
+        <span title="Côté → 1ʳᵉ bande">Côté 1ʳᵉ</span>
+        <span title="Entre modules max">Entre mod.</span>
+        <span title="Modules par m² (cible)">Mod./m²</span>
+        <span></span>
+      </div>
+      <div id="poseRows"></div>
+      <button class="mini" id="addPose" style="margin-top:4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px"><path d="M12 5v14M5 12h14"/></svg> Ajouter une configuration</button>
+      <div class="hint">Toutes les valeurs sont en mm (sauf Mod./m²). Tu choisiras la configuration à utiliser au moment du calepinage.</div>
+      <div class="sub">Électrique</div>
+      <div class="field"><label>Puissance par module <span class="u">W</span></label><input type="number" id="f_pow" value="1.2" step="0.1"></div>
+      <div class="field"><label>Nb max de modules par transformateur</label></div>
+      <div class="grid3" style="margin-bottom:9px">
+        <div class="field"><label>40 W</label><input type="number" id="f_t40" value="28" step="1"></div>
+        <div class="field"><label>60 W</label><input type="number" id="f_t60" value="42" step="1"></div>
+        <div class="field"><label>100 W</label><input type="number" id="f_t100" value="70" step="1"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>150 W</label><input type="number" id="f_t150" value="105" step="1"></div>
+        <div class="field"><label>200 W</label><input type="number" id="f_t200" value="140" step="1"></div>
+      </div>
+      <div class="hint">Ces plafonds sont propres à chaque module (selon le courant réel). On les utilise tels quels pour dimensionner les transfos — l'abaque fabricant fait foi.</div>
+    </div>
+    <footer>
+      <button class="btn ghost" id="modalCancel">Annuler</button>
+      <button class="btn primary" id="modalSave">Enregistrer</button>
+    </footer>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================ STATE ============================ */
+var LOOP_COLORS=["#FFB23E","#4FB6C4","#7FD86B","#B79CFF","#FF8FB0","#5BA3F5","#FF8A5B","#4FD0B0","#E8C95A","#9AA7FF"];
+var state={
+  modules:[], editId:null,
+  rawDxf:null, fileName:null, exportScale:1,
+  designSegs:[], loops:[], bbox:null,        // geometry in mm
+  ledPts:[], wireLoops:[], litAreaM2:0, gridStep:50,
+  plan:null,
+  view:{scale:1,ox:0,oy:0}, drag:null, modalPoses:[]
+};
+
+/* ============================ STORAGE ============================ */
+async function loadModules(){
+  try{
+    if(window.storage){var r=await window.storage.get("led_modules");
+      if(r&&r.value){state.modules=JSON.parse(r.value).map(migrateModule);return;}}
+  }catch(e){}
+  try{
+    var ls=localStorage.getItem("led_modules");
+    if(ls){state.modules=JSON.parse(ls).map(migrateModule);return;}
+  }catch(e){}
+  state.modules=defaultModules();
+}
+function migrateModule(m){
+  if(m.len==null) m.len=m.size!=null?m.size:50;
+  if(m.wid==null) m.wid=m.size!=null?m.size:20;
+  if(!Array.isArray(m.poses)){
+    m.poses=[{front:m.front!=null?m.front:80, bande:m.bande!=null?m.bande:140, edge:m.edge!=null?m.edge:40, maxsp:m.maxsp!=null?m.maxsp:140, perm2:m.perm2!=null?m.perm2:50}];
+  }
+  return m;
+}
+async function saveModules(){
+  var data=JSON.stringify(state.modules);
+  try{ if(window.storage) await window.storage.set("led_modules",data); }catch(e){}
+  try{ localStorage.setItem("led_modules",data); }catch(e){}
+}
+function defaultModules(){
+  return [{
+    id:uid(),name:"Module standard 3 lentilles",len:50,wid:20,
+    poses:[
+      {front:60,bande:110,edge:35,maxsp:110,perm2:70},
+      {front:80,bande:140,edge:40,maxsp:140,perm2:50},
+      {front:100,bande:170,edge:50,maxsp:170,perm2:35}
+    ],
+    pow:1.2,t:{40:28,60:42,100:70,150:105,200:140}
+  }];
+}
+function uid(){return "m"+Math.random().toString(36).slice(2,9);}
+
+/* ============================ DXF PARSE ============================ */
+function tokenize(t){
+  var L=t.split(/\r\n|\r|\n/),out=[];
+  for(var i=0;i+1<L.length;i+=2){
+    var c=parseInt(L[i].trim(),10);
+    if(isNaN(c)){continue;}
+    out.push({c:c,v:L[i+1]});
+  }
+  return out;
+}
+function tessArc(cx,cy,r,a0,a1,ccw){
+  var pts=[];var span=a1-a0;
+  if(ccw){while(span<0)span+=2*Math.PI;}else{while(span>0)span-=2*Math.PI;}
+  var n=Math.max(2,Math.ceil(Math.abs(span)/(Math.PI/24)));
+  for(var i=0;i<=n;i++){var a=a0+span*(i/n);pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+  return pts;
+}
+function bulgePts(p0,p1,b){
+  if(!b)return[p1];
+  var ang=4*Math.atan(b);
+  var chord=Math.hypot(p1[0]-p0[0],p1[1]-p0[1]);
+  if(chord<1e-9)return[p1];
+  var r=chord/(2*Math.sin(Math.abs(ang)/2));
+  var mid=[(p0[0]+p1[0])/2,(p0[1]+p1[1])/2];
+  var d=r*Math.cos(ang/2);
+  var dir=[(p1[1]-p0[1])/chord,-(p1[0]-p0[0])/chord];
+  var s=b>0?1:-1;
+  var cen=[mid[0]-dir[0]*d*s,mid[1]-dir[1]*d*s];
+  var a0=Math.atan2(p0[1]-cen[1],p0[0]-cen[0]);
+  var n=Math.max(2,Math.ceil(Math.abs(ang)/(Math.PI/24)));
+  var out=[];for(var i=1;i<=n;i++){var a=a0+ang*(i/n);out.push([cen[0]+r*Math.cos(a),cen[1]+r*Math.sin(a)]);}
+  return out;
+}
+// returns {segs:[polyline...], closed:[polygon...]} in DXF units
+function parseDxf(text){
+  var tk=tokenize(text),i=0,segs=[],closed=[];
+  while(i<tk.length&&!(tk[i].c===2&&tk[i].v.trim()==="ENTITIES"))i++;
+  i++;
+  function readEntity(type){
+    var g={x:[],y:[],x2:null,y2:null,r:null,a0:null,a1:null,flag:0,n:0,bul:{},cx:null,cy:null};
+    var vi=-1;
+    while(i<tk.length&&tk[i].c!==0){
+      var c=tk[i].c,v=tk[i].v;
+      if(c===10){g.x.push(parseFloat(v));vi=g.x.length-1;g.cx=parseFloat(v);}
+      else if(c===20){g.y.push(parseFloat(v));g.cy=parseFloat(v);}
+      else if(c===11){g.x2=parseFloat(v);}
+      else if(c===21){g.y2=parseFloat(v);}
+      else if(c===40){g.r=parseFloat(v);}
+      else if(c===50){g.a0=parseFloat(v)*Math.PI/180;}
+      else if(c===51){g.a1=parseFloat(v)*Math.PI/180;}
+      else if(c===70){g.flag=parseInt(v)||0;}
+      else if(c===90){g.n=parseInt(v)||0;}
+      else if(c===42&&vi>=0){g.bul[vi]=parseFloat(v);}
+      i++;
+    }
+    return g;
+  }
+  while(i<tk.length){
+    if(tk[i].c===0){
+      var type=tk[i].v.trim();
+      if(type==="ENDSEC")break;
+      if(type==="LINE"){i++;var g=readEntity(); if(g.x.length&&g.x2!=null)segs.push([[g.x[0],g.y[0]],[g.x2,g.y2]]); }
+      else if(type==="LWPOLYLINE"){
+        i++;var g=readEntity();
+        var pl=[],cl=(g.flag&1)===1;
+        for(var k=0;k<g.x.length;k++)pl.push([g.x[k],g.y[k]]);
+        var poly=[pl[0]];var lim=cl?pl.length:pl.length-1;
+        for(var k=0;k<lim;k++){var a=pl[k],b=pl[(k+1)%pl.length];bulgePts(a,b,g.bul[k]||0).forEach(function(p){poly.push(p);});}
+        if(poly.length>1){segs.push(poly); if(cl)closed.push(poly);}
+      }
+      else if(type==="CIRCLE"){i++;var g=readEntity();if(g.r){var c=tessArc(g.cx,g.cy,g.r,0,2*Math.PI,true);segs.push(c);closed.push(c);} }
+      else if(type==="ARC"){i++;var g=readEntity();if(g.r!=null&&g.a0!=null){var c=tessArc(g.cx,g.cy,g.r,g.a0,g.a1,true);segs.push(c);} }
+      else if(type==="SPLINE"){
+        i++;var g=readEntity();var pl=[];for(var k=0;k<g.x.length;k++)pl.push([g.x[k],g.y[k]]);
+        if(pl.length>1){var cl=(g.flag&1)===1;if(cl)pl.push(pl[0]);segs.push(pl);if(cl)closed.push(pl);}
+      }
+      else if(type==="POLYLINE"){
+        i++;var g=readEntity();var cl=(g.flag&1)===1;var vs=[];
+        while(i<tk.length&&tk[i].c===0&&tk[i].v.trim()==="VERTEX"){i++;var gv=readEntity();if(gv.x.length)vs.push([gv.x[0],gv.y[0]]);}
+        if(i<tk.length&&tk[i].c===0&&tk[i].v.trim()==="SEQEND"){i++;readEntity();}
+        if(vs.length>1){if(cl)vs.push(vs[0]);segs.push(vs);if(cl)closed.push(vs);}
+        continue;
+      }
+      else { i++; readEntity(); }
+    } else i++;
+  }
+  return {segs:segs,closed:closed};
+}
+
+// stitch open segments into closed loops (for letters drawn as many LINE/ARC)
+function stitch(segs,closedAlready,diag){
+  var tol=Math.max(0.02,diag*1e-4);
+  var used=new Array(segs.length).fill(false);
+  // mark already-closed
+  var loops=closedAlready.slice();
+  // remaining open chains
+  var open=[];
+  segs.forEach(function(s,idx){
+    var first=s[0],last=s[s.length-1];
+    if(Math.hypot(first[0]-last[0],first[1]-last[1])<tol && s.length>2 && closedAlready.indexOf(s)<0){
+      // self-closed polyline not flagged
+      loops.push(s);used[idx]=true;
+    }
+  });
+  for(var i=0;i<segs.length;i++){
+    if(used[i]||closedAlready.indexOf(segs[i])>=0)continue;
+    var chain=segs[i].slice();used[i]=true;
+    var changed=true,guard=0;
+    while(changed&&guard++<segs.length*2){
+      changed=false;
+      var end=chain[chain.length-1];
+      for(var j=0;j<segs.length;j++){
+        if(used[j]||closedAlready.indexOf(segs[j])>=0)continue;
+        var s=segs[j],a=s[0],b=s[s.length-1];
+        if(Math.hypot(end[0]-a[0],end[1]-a[1])<tol){chain=chain.concat(s.slice(1));used[j]=true;changed=true;break;}
+        if(Math.hypot(end[0]-b[0],end[1]-b[1])<tol){chain=chain.concat(s.slice().reverse().slice(1));used[j]=true;changed=true;break;}
+      }
+    }
+    var f=chain[0],l=chain[chain.length-1];
+    if(chain.length>2&&Math.hypot(f[0]-l[0],f[1]-l[1])<tol*5)loops.push(chain);
+  }
+  return loops;
+}
+
+/* ============================ GEOMETRY ============================ */
+function computeBbox(polys){
+  var b={minX:1e15,minY:1e15,maxX:-1e15,maxY:-1e15};
+  polys.forEach(function(p){p.forEach(function(q){b.minX=Math.min(b.minX,q[0]);b.minY=Math.min(b.minY,q[1]);b.maxX=Math.max(b.maxX,q[0]);b.maxY=Math.max(b.maxY,q[1]);});});
+  return b;
+}
+function scalePolys(polys,k){return polys.map(function(p){return p.map(function(q){return [q[0]*k,q[1]*k];});});}
+
+/* ============================ FILL (scanline, even-odd, clipped) ============================ */
+function fillCalepinage(loops,bande,edge,maxsp,size){
+  var b=computeBbox(loops);
+  var rows=[],litArea=0;
+  var y=b.minY+edge, ri=0;
+  for(;y<=b.maxY-edge+1e-6;y+=bande,ri++){
+    var xs=[];
+    loops.forEach(function(p){
+      for(var k=0;k<p.length-1;k++){
+        var a=p[k],c=p[k+1];
+        if((a[1]<=y&&c[1]>y)||(c[1]<=y&&a[1]>y)){
+          xs.push(a[0]+(y-a[1])/(c[1]-a[1])*(c[0]-a[0]));
+        }
+      }
+    });
+    xs.sort(function(u,v){return u-v;});
+    var rowPts=[];
+    for(var s=0;s+1<xs.length;s+=2){
+      var spanW=xs[s+1]-xs[s];
+      litArea+=spanW*bande;
+      var a=xs[s]+edge, c=xs[s+1]-edge, L=c-a;
+      if(L<-1e-9){ if(spanW>=size)rowPts.push([(xs[s]+xs[s+1])/2,y]); continue; }
+      if(L<maxsp*0.5){ if(spanW>=size)rowPts.push([(xs[s]+xs[s+1])/2,y]); continue; }
+      var count=Math.floor(L/maxsp)+1, sp=count>1?L/(count-1):0;
+      for(var m=0;m<count;m++)rowPts.push([a+m*sp,y]);
+    }
+    if(rowPts.length)rows.push({y:y,ri:ri,pts:rowPts});
+  }
+  // serpentine order
+  var ordered=[];
+  rows.forEach(function(r,idx){
+    var ps=r.pts.slice();
+    if(idx%2===1)ps.reverse();
+    ps.forEach(function(p){ordered.push(p);});
+  });
+  return {pts:ordered, litAreaM2:litArea/1e6};
+}
+function chunkLoops(pts,maxPerLoop){
+  var loops=[];
+  for(var i=0;i<pts.length;i+=maxPerLoop)loops.push(pts.slice(i,i+maxPerLoop));
+  return loops;
+}
+
+/* ============================ TRANSFORMER PLAN ============================ */
+function transfoPlan(N,mod,maxPerLoop,wireLoops){
+  var tiers=[40,60,100,150,200];
+  var largest=wireLoops.reduce(function(m,l){return Math.max(m,l.length);},0);
+  var rows=tiers.map(function(t){
+    var cap=mod.t[t]||0;
+    if(!cap)return null;
+    var valid=cap>=largest && cap>0;
+    var qty=valid?Math.ceil(N/cap):Infinity;
+    return {t:t,cap:cap,qty:qty,instW:valid?qty*t:Infinity,util:valid?Math.round(N/(qty*cap)*100):0,valid:valid};
+  }).filter(Boolean);
+  var valids=rows.filter(function(r){return r.valid;});
+  valids.sort(function(a,b){return a.instW-b.instW||a.qty-b.qty;});
+  var best=valids[0]||null;
+  // bin-pack loops into transfos of best tier
+  var assign=[];
+  if(best){
+    var cap=best.cap, cur=[],curN=0;
+    wireLoops.forEach(function(lp){
+      if(curN+lp.length>cap && cur.length){assign.push({loops:cur,n:curN});cur=[];curN=0;}
+      cur.push(lp);curN+=lp.length;
+    });
+    if(cur.length)assign.push({loops:cur,n:curN});
+  }
+  return {rows:rows,best:best,assign:assign,largest:largest};
+}
+
+/* ============================ RUN ============================ */
+function getSelectedModule(){var id=document.getElementById("selMod").value;return state.modules.find(function(m){return m.id===id;});}
+function getSelectedPose(){var mod=getSelectedModule();if(!mod||!mod.poses)return null;var i=parseInt(document.getElementById("selPose").value);return (i>=0&&mod.poses[i])?mod.poses[i]:null;}
+function run(){
+  var mod=getSelectedModule(), pose=getSelectedPose();
+  if(!mod||!pose||!state.loops.length)return;
+  var maxPerLoop=Math.max(1,parseInt(document.getElementById("pLoop").value)||20);
+  var res=fillCalepinage(state.loops,pose.bande,pose.edge,pose.maxsp,Math.min(mod.len,mod.wid));
+  state.ledPts=res.pts;
+  state.litAreaM2=res.litAreaM2;
+  state.wireLoops=chunkLoops(res.pts,maxPerLoop);
+  state.gridStep=Math.max(10,pose.bande);
+  state.plan=transfoPlan(res.pts.length,mod,maxPerLoop,state.wireLoops);
+  document.getElementById("tWire").checked=false;
+  renderResults(mod,pose);
+  draw();
+  document.getElementById("btnExport").disabled=res.pts.length===0;
+  document.getElementById("btnBom").disabled=res.pts.length===0;
+  setPill(res.pts.length?"ready":"idle", res.pts.length?(res.pts.length+" modules placés · fond/face "+pose.front+" mm"):"aucun point");
+}
+
+/* ============================ RESULTS UI ============================ */
+function renderResults(mod,pose){
+  var N=state.ledPts.length;
+  document.getElementById("sModules").textContent=N;
+  document.getElementById("sLoops").textContent=state.wireLoops.length;
+  var dens=state.litAreaM2>0?Math.round(N/state.litAreaM2):0;
+  document.getElementById("sDens").innerHTML=dens+'<small> /m²</small>';
+  document.getElementById("sPower").innerHTML=(N*mod.pow).toFixed(1).replace(/\.0$/,'')+'<small> W</small>';
+
+  // alerts
+  var al=[];
+  var reco=recoSpacing(pose.front,parseFloat(document.getElementById("pAngle").value)||160);
+  if(pose.maxsp>1.3*reco) al.push(["bad","Espacement entre modules ("+pose.maxsp+" mm) très supérieur au recommandé (~"+Math.round(reco)+" mm) pour "+pose.front+" mm de fond/face — risque de points sombres sur la face."]);
+  else if(pose.maxsp>reco) al.push(["warn","Espacement entre modules ("+pose.maxsp+" mm) au-delà du recommandé (~"+Math.round(reco)+" mm) — recouvrement limite, à vérifier sur face peu diffusante."]);
+  else al.push(["ok","Espacement modules / fond-face cohérent avec l'angle (recommandé ~"+Math.round(reco)+" mm)."]);
+  if(pose.bande>1.3*reco) al.push(["warn","Entre-bandes ("+pose.bande+" mm) élevé par rapport au recommandé (~"+Math.round(reco)+" mm)."]);
+  if(dens && pose.perm2 && Math.abs(dens-pose.perm2)/pose.perm2>0.25) al.push(["warn","Densité obtenue "+dens+" /m² vs cible "+pose.perm2+" /m². Ajustez entre-bandes / entre-modules si besoin."]);
+  if(state.plan&&!state.plan.best) al.push(["bad","Aucun transformateur ne peut alimenter une boucle de "+state.plan.largest+" modules. Réduisez « modules / boucle max » ou renseignez un transfo plus puissant."]);
+  document.getElementById("alerts").innerHTML=al.map(function(a){
+    var ic=a[0]==="ok"?'<path d="M20 6L9 17l-5-5"/>':a[0]==="warn"?'<path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>':'<circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/>';
+    return '<div class="alert '+a[0]+'"><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'+ic+'</svg></span><span>'+a[1]+'</span></div>';
+  }).join("");
+
+  // transformer comparison table
+  var p=state.plan;
+  if(p&&p.rows.length){
+    var rows=p.rows.map(function(r){
+      var cls=r===p.best?"best":(!r.valid?"invalid":"");
+      return '<tr class="'+cls+'"><td>'+r.t+' W</td><td>'+r.cap+'</td><td>'+(r.valid?r.qty:'—')+'</td><td>'+(r.valid?r.instW+' W':'—')+'</td><td>'+(r.valid?r.util+'%':'—')+'</td></tr>';
+    }).join("");
+    var rec=p.best?('<div class="alert ok" style="margin-bottom:10px"><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></span><span>Recommandé : <b>'+p.best.qty+' × transfo '+p.best.t+' W</b> ('+p.best.util+'% de charge, puissance installée '+p.best.instW+' W).</span></div>'):'';
+    document.getElementById("tfBlock").innerHTML=rec+'<table class="tf"><tr><th>Transfo</th><th>Cap.</th><th>Qté</th><th>Installé</th><th>Charge</th></tr>'+rows+'</table>';
+  } else {
+    document.getElementById("tfBlock").innerHTML='<div class="empty-note">Renseignez les plafonds par transfo dans la fiche module.</div>';
+  }
+
+  // electrical plan
+  if(p&&p.assign.length){
+    var html=p.assign.map(function(tx,i){
+      var loopLabels=tx.loops.map(function(lp,j){return "B"+(p.assign.slice(0,i).reduce(function(a,t){return a+t.loops.length;},0)+j+1);}).join(" · ");
+      var load=(tx.n*mod.pow).toFixed(1).replace(/\.0$/,'');
+      var capW=p.best.t;
+      var pct=Math.min(100,Math.round((tx.n*mod.pow)/capW*100));
+      return '<div class="tx-row"><div class="th"><span>Transfo T'+(i+1)+' · '+p.best.t+' W</span><span>'+tx.n+' mod · '+load+' W</span></div>'
+        +'<div class="ts">Boucles : '+loopLabels+'</div>'
+        +'<div class="bar"><i style="width:'+pct+'%"></i></div></div>';
+    }).join("");
+    document.getElementById("planBlock").innerHTML=html;
+    buildLegend();
+  } else {
+    document.getElementById("planBlock").innerHTML='<div class="empty-note">—</div>';
+  }
+}
+function recoSpacing(D,ang){var r=ang<=120?1.0:ang<=150?1.3:ang<=170?1.6:1.8;return D*r;}
+function buildLegend(){
+  var lg=document.getElementById("legend");
+  var n=Math.min(state.wireLoops.length,LOOP_COLORS.length);
+  var rows="";
+  for(var i=0;i<state.wireLoops.length;i++){
+    var col=LOOP_COLORS[i%LOOP_COLORS.length];
+    rows+='<div class="row"><span class="sw" style="background:'+col+'"></span>Boucle B'+(i+1)+' — '+state.wireLoops[i].length+' mod.</div>';
+  }
+  lg.innerHTML='<div style="color:var(--tx);margin-bottom:6px;font-weight:600">Boucles ('+state.wireLoops.length+')</div>'+rows;
+}
+
+/* ============================ POSE DETAIL ============================ */
+function renderPoseDetail(){
+  var mod=getSelectedModule(), pose=getSelectedPose();
+  var el=document.getElementById("poseDetail");
+  if(!mod){el.className="empty-note";el.textContent="Choisissez un module pour voir ses configurations de pose.";return;}
+  if(!pose){el.className="empty-note";el.textContent="Choisissez une configuration fond/face pour ce module.";return;}
+  el.className="";
+  el.innerHTML='<table class="tf"><tr><td>Fond / face</td><td>'+pose.front+' mm</td></tr>'
+    +'<tr><td>Entre bandes</td><td>'+pose.bande+' mm</td></tr>'
+    +'<tr><td>Côté → 1ʳᵉ bande</td><td>'+pose.edge+' mm</td></tr>'
+    +'<tr><td>Entre modules max</td><td>'+pose.maxsp+' mm</td></tr>'
+    +'<tr><td>Modules / m² (cible)</td><td>'+pose.perm2+'</td></tr>'
+    +'<tr><td>Dimensions (L × l)</td><td>'+mod.len+' × '+mod.wid+' mm</td></tr>'
+    +'<tr><td>Puissance</td><td>'+mod.pow+' W</td></tr></table>';
+}
+
+/* ============================ CANVAS ============================ */
+var cv=document.getElementById("cv"),ctx=cv.getContext("2d");
+function resizeCanvas(){
+  var vp=document.getElementById("viewport");
+  var dpr=window.devicePixelRatio||1;
+  cv.width=vp.clientWidth*dpr;cv.height=vp.clientHeight*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  draw();
+}
+function fitView(){
+  if(!state.bbox)return;
+  var vp=document.getElementById("viewport");
+  var w=vp.clientWidth,h=vp.clientHeight,pad=60;
+  var bw=state.bbox.maxX-state.bbox.minX, bh=state.bbox.maxY-state.bbox.minY;
+  if(bw<=0||bh<=0)return;
+  var s=Math.min((w-pad*2)/bw,(h-pad*2)/bh);
+  state.view.scale=s;
+  state.view.ox=(w-bw*s)/2 - state.bbox.minX*s;
+  state.view.oy=(h-bh*s)/2 + state.bbox.maxY*s;
+  draw();
+}
+function W2S(x,y){return [state.view.ox+x*state.view.scale, state.view.oy-y*state.view.scale];}
+function S2W(px,py){return [(px-state.view.ox)/state.view.scale, (state.view.oy-py)/state.view.scale];}
+function draw(){
+  var vp=document.getElementById("viewport");
+  ctx.clearRect(0,0,vp.clientWidth,vp.clientHeight);
+  if(!state.loops.length&&!state.designSegs.length)return;
+  var V=state.view;
+  // grid
+  if(document.getElementById("tGrid").checked&&state.bbox){
+    var step=state.gridStep;
+    ctx.lineWidth=1;ctx.strokeStyle="rgba(255,255,255,0.045)";
+    var tl=S2W(0,0), br=S2W(vp.clientWidth,vp.clientHeight);
+    var x0=Math.floor(tl[0]/step)*step, x1=Math.ceil(br[0]/step)*step;
+    var y0=Math.floor(br[1]/step)*step, y1=Math.ceil(tl[1]/step)*step;
+    ctx.beginPath();
+    for(var gx=x0;gx<=x1;gx+=step){var a=W2S(gx,0);ctx.moveTo(a[0],0);ctx.lineTo(a[0],vp.clientHeight);}
+    for(var gy=y0;gy<=y1;gy+=step){var b=W2S(0,gy);ctx.moveTo(0,b[1]);ctx.lineTo(vp.clientWidth,b[1]);}
+    ctx.stroke();
+  }
+  // design (filled with even-odd to punch holes, plus outline)
+  if(document.getElementById("tDesign").checked){
+    if(state.loops.length){
+      ctx.beginPath();
+      state.loops.forEach(function(p){
+        p.forEach(function(q,k){var s=W2S(q[0],q[1]);if(k===0)ctx.moveTo(s[0],s[1]);else ctx.lineTo(s[0],s[1]);});
+        ctx.closePath();
+      });
+      ctx.fillStyle="rgba(120,140,165,0.10)";
+      ctx.fill("evenodd");
+    }
+    ctx.lineWidth=1.4;ctx.strokeStyle="rgba(150,170,195,0.85)";
+    state.designSegs.forEach(function(p){
+      ctx.beginPath();
+      p.forEach(function(q,k){var s=W2S(q[0],q[1]);if(k===0)ctx.moveTo(s[0],s[1]);else ctx.lineTo(s[0],s[1]);});
+      ctx.stroke();
+    });
+  }
+  // wiring
+  if(document.getElementById("tWire").checked&&state.wireLoops.length){
+    ctx.lineWidth=1.3;
+    state.wireLoops.forEach(function(lp,i){
+      ctx.strokeStyle=LOOP_COLORS[i%LOOP_COLORS.length];
+      ctx.globalAlpha=0.65;ctx.beginPath();
+      lp.forEach(function(q,k){var s=W2S(q[0],q[1]);if(k===0)ctx.moveTo(s[0],s[1]);else ctx.lineTo(s[0],s[1]);});
+      ctx.stroke();ctx.globalAlpha=1;
+    });
+  }
+  // LED points
+  if(document.getElementById("tLed").checked&&state.ledPts.length){
+    var colored=document.getElementById("tWire").checked;
+    var r=Math.max(2,Math.min(6,state.view.scale*8));
+    if(colored){
+      state.wireLoops.forEach(function(lp,i){
+        var col=LOOP_COLORS[i%LOOP_COLORS.length];
+        lp.forEach(function(q){var s=W2S(q[0],q[1]);glowDot(s[0],s[1],r,col);});
+      });
+    } else {
+      state.ledPts.forEach(function(q){var s=W2S(q[0],q[1]);glowDot(s[0],s[1],r,"#FFB23E");});
+    }
+  }
+}
+function glowDot(x,y,r,col){
+  var g=ctx.createRadialGradient(x,y,0,x,y,r*3.2);
+  g.addColorStop(0,col);g.addColorStop(0.25,col);g.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.globalAlpha=0.5;ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r*3.2,0,2*Math.PI);ctx.fill();
+  ctx.globalAlpha=1;ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(x,y,r*0.6,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle=col;ctx.beginPath();ctx.arc(x,y,r,0,2*Math.PI);ctx.globalAlpha=0.9;ctx.fill();ctx.globalAlpha=1;
+}
+
+/* ============================ DXF EXPORT ============================ */
+function num(n){return (Math.round(n*10000)/10000).toString();}
+function buildLedEntities(unitScale,markerDia,withWire){
+  var L=[];var rr=(markerDia/2)/unitScale; // back to dxf units
+  function E(){for(var i=0;i<arguments.length;i++)L.push(arguments[i]);}
+  state.ledPts.forEach(function(q){
+    var x=q[0]/unitScale, y=q[1]/unitScale;
+    E("0","CIRCLE","8","LED_MODULES","62","2","10",num(x),"20",num(y),"30","0.0","40",num(rr));
+    E("0","POINT","8","LED_MODULES","10",num(x),"20",num(y),"30","0.0");
+  });
+  if(withWire){
+    state.wireLoops.forEach(function(lp){
+      for(var k=0;k<lp.length-1;k++){
+        var a=lp[k],b=lp[k+1];
+        E("0","LINE","8","LED_CABLAGE","62","4","10",num(a[0]/unitScale),"20",num(a[1]/unitScale),"30","0.0","11",num(b[0]/unitScale),"21",num(b[1]/unitScale),"31","0.0");
+      }
+    });
+  }
+  return L.join("\n");
+}
+function minimalDxf(unitScale,led){
+  var L=["0","SECTION","2","ENTITIES"];
+  state.designSegs.forEach(function(p){
+    for(var k=0;k<p.length-1;k++){
+      L.push("0","LINE","8","DESIGN","10",num(p[k][0]/unitScale),"20",num(p[k][1]/unitScale),"30","0.0","11",num(p[k+1][0]/unitScale),"21",num(p[k+1][1]/unitScale),"31","0.0");
+    }
+  });
+  return L.join("\n")+"\n"+led+"\n0\nENDSEC\n0\nEOF\n";
+}
+function spliceDxf(raw,led){
+  var lines=raw.split(/\r\n|\r|\n/);
+  var entIdx=-1;
+  for(var i=0;i<lines.length;i++){if(lines[i].trim()==="ENTITIES"){entIdx=i;break;}}
+  if(entIdx<0)return null;
+  var endIdx=-1;
+  for(var j=entIdx+1;j<lines.length;j++){if(lines[j].trim()==="ENDSEC"){endIdx=j;break;}}
+  if(endIdx<0)return null;
+  // the "0" before ENDSEC is at endIdx-1
+  var insertAt=endIdx-1;
+  var before=lines.slice(0,insertAt).join("\n");
+  var after=lines.slice(insertAt).join("\n");
+  return before+"\n"+led+"\n"+after;
+}
+function exportDxf(){
+  var unitScale=state.exportScale||1;
+  var withWire=document.getElementById("tWire").checked;
+  var mod=getSelectedModule();
+  var markerDia=mod?Math.min(Math.min(mod.len,mod.wid),8):5; // marker circle, mm
+  var led=buildLedEntities(unitScale,markerDia,withWire);
+  var out=null;
+  if(state.rawDxf)out=spliceDxf(state.rawDxf,led);
+  if(!out)out=minimalDxf(unitScale,led);
+  var base=(state.fileName||"design").replace(/\.(dxf|pdf|ai)$/i,"");
+  download(base+"_LED.dxf",out,"application/dxf");
+}
+function exportBom(){
+  var mod=getSelectedModule(), pose=getSelectedPose();if(!mod||!pose)return;
+  var N=state.ledPts.length,p=state.plan;
+  var rows=[["Référence module",mod.name],["Modules total",N],["Boucles",state.wireLoops.length],
+    ["Densité /m²",state.litAreaM2>0?Math.round(N/state.litAreaM2):0],
+    ["Puissance totale (W)",(N*mod.pow).toFixed(1)],
+    ["Fond/face (mm)",pose.front],["Entre bandes (mm)",pose.bande],["Entre modules max (mm)",pose.maxsp],["Côté 1ʳᵉ bande (mm)",pose.edge],["Modules/m² cible",pose.perm2],["Dimensions module (mm)",mod.len+" x "+mod.wid]];
+  if(p&&p.best){rows.push(["Transfo recommandé",p.best.qty+" x "+p.best.t+" W"]);rows.push(["Charge transfo",p.best.util+"%"]);}
+  if(p&&p.assign){p.assign.forEach(function(tx,i){rows.push(["Transfo T"+(i+1)+" ("+p.best.t+" W)",tx.n+" modules / "+tx.loops.length+" boucles"]);});}
+  var csv=rows.map(function(r){return '"'+r[0]+'","'+r[1]+'"';}).join("\n");
+  var base=(state.fileName||"design").replace(/\.(dxf|pdf|ai)$/i,"");
+  download(base+"_nomenclature.csv","Poste,Valeur\n"+csv,"text/csv");
+}
+function download(name,content,mime){
+  var blob=new Blob([content],{type:mime});
+  var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+}
+
+/* ============================ IMPORT ============================ */
+function handleFile(file){
+  var ext=(file.name.split(".").pop()||"").toLowerCase();
+  state.fileName=file.name;
+  document.getElementById("fileName").textContent=file.name;
+  if(ext==="dxf") readDxf(file);
+  else if(ext==="pdf"||ext==="ai") readPdfAi(file);
+  else { setPill("idle","format non géré"); showImportError("Format non pris en charge : <b>."+ext+"</b>. Déposez un fichier DXF, PDF ou AI."); }
+}
+function readDxf(file){
+  var rd=new FileReader();
+  rd.onload=function(){
+    var unitScale=parseFloat(document.getElementById("pUnit").value)||1;
+    var pr=parseDxf(rd.result);
+    var bRaw=computeBbox(pr.segs.length?pr.segs:pr.closed);
+    var diag=Math.hypot(bRaw.maxX-bRaw.minX,bRaw.maxY-bRaw.minY);
+    var loopsRaw=stitch(pr.segs,pr.closed,diag);
+    state.rawDxf=rd.result;
+    state.exportScale=unitScale;
+    finalizeGeometry(scalePolys(pr.segs,unitScale), scalePolys(loopsRaw,unitScale), "DXF");
+  };
+  rd.readAsText(file);
+}
+function readPdfAi(file){
+  setPill("idle","lecture du "+( /\.ai$/i.test(file.name)?"AI":"PDF")+"…");
+  var rd=new FileReader();
+  rd.onload=function(){
+    extractPdf(rd.result).then(function(segsMm){
+      if(!segsMm.length){showImportError("Aucun tracé vectoriel trouvé dans ce fichier. Pour un .ai, vérifiez l'option « Créer un fichier compatible PDF » à l'enregistrement dans Illustrator.");setPill("idle","vide");return;}
+      var b=computeBbox(segsMm);
+      var diag=Math.hypot(b.maxX-b.minX,b.maxY-b.minY);
+      var loops=stitch(segsMm,[],diag);
+      state.rawDxf=null;          // pas de DXF source → on génèrera un DXF complet à l'export
+      state.exportScale=1;        // géométrie déjà en mm, on exporte en mm
+      finalizeGeometry(segsMm, loops, /\.ai$/i.test(file.name)?"Illustrator":"PDF");
+    }).catch(function(err){
+      console.error(err);
+      showImportError("Lecture PDF/AI impossible ici. Téléchargez le fichier HTML et ouvrez-le directement dans votre navigateur (la lecture PDF/AI a besoin de charger un module). Sinon, exportez votre design en DXF depuis Illustrator.");
+      setPill("idle","échec lecture PDF");
+    });
+  };
+  rd.readAsArrayBuffer(file);
+}
+function finalizeGeometry(segsMm, loopsMm, sourceLabel){
+  state.designSegs=segsMm;
+  state.loops=loopsMm;
+  state.bbox=computeBbox(segsMm.length?segsMm:loopsMm);
+  state.ledPts=[];state.wireLoops=[];state.plan=null;
+  document.getElementById("vpEmpty").style.display="none";
+  document.getElementById("vpTools").style.display="flex";
+  document.getElementById("stLoops").textContent=state.loops.length;
+  document.getElementById("btnRun").disabled=!(getSelectedModule()&&getSelectedPose());
+  document.getElementById("btnExport").disabled=true;
+  document.getElementById("btnBom").disabled=true;
+  document.getElementById("legend").classList.remove("show");
+  clearResults();
+  setPill("idle", state.loops.length?(state.loops.length+" contours fermés détectés · "+sourceLabel):("aucun contour fermé · "+sourceLabel));
+  fitView();
+  if(!state.loops.length){
+    showImportError("Aucun contour fermé détecté. Vérifiez que les lettres sont des chemins fermés (joindre les tracés / fermer les chemins avant l'export).");
+  }
+}
+function showImportError(msg){
+  document.getElementById("alerts").innerHTML='<div class="alert bad"><span class="ic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg></span><span>'+msg+'</span></div>';
+}
+
+/* ---- lecteur PDF / Illustrator (extraction vectorielle via PDF.js) ---- */
+var pdfjsReady=null;
+function loadPdfJs(){
+  if(pdfjsReady)return pdfjsReady;
+  pdfjsReady=new Promise(function(res,rej){
+    if(window.pdfjsLib){ready();return;}
+    var s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload=ready; s.onerror=function(){rej(new Error("cdn"));};
+    document.head.appendChild(s);
+    function ready(){try{window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";res(window.pdfjsLib);}catch(e){rej(e);}}
+  });
+  return pdfjsReady;
+}
+function bez(arr,p0,c1,c2,p3){var N=14;for(var t=1;t<=N;t++){var u=t/N,m=1-u;arr.push([m*m*m*p0[0]+3*m*m*u*c1[0]+3*m*u*u*c2[0]+u*u*u*p3[0], m*m*m*p0[1]+3*m*m*u*c1[1]+3*m*u*u*c2[1]+u*u*u*p3[1]]);}}
+async function extractPdf(buf){
+  var lib=await loadPdfJs();
+  var doc=await lib.getDocument({data:buf}).promise;
+  var page=await doc.getPage(1);
+  var ops=await page.getOperatorList();
+  var OPS=lib.OPS, subs=[], cur=null, start=null, ctm=[1,0,0,1,0,0], stack=[];
+  function ap(m,x,y){return [m[0]*x+m[2]*y+m[4], m[1]*x+m[3]*y+m[5]];}
+  function mm(a,b){return [a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1], a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3], a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5]];}
+  function P(x,y){return ap(ctm,x,y);}
+  function flush(){if(cur&&cur.length>1)subs.push(cur);cur=null;}
+  for(var i=0;i<ops.fnArray.length;i++){
+    var fn=ops.fnArray[i], a=ops.argsArray[i];
+    if(fn===OPS.save){stack.push(ctm.slice());}
+    else if(fn===OPS.restore){if(stack.length)ctm=stack.pop();}
+    else if(fn===OPS.transform){ctm=mm(ctm,a);}
+    else if(fn===OPS.constructPath){
+      var sub=a[0], co=a[1], ci=0;
+      for(var k=0;k<sub.length;k++){
+        var op=sub[k];
+        if(op===OPS.moveTo){flush();var p=P(co[ci],co[ci+1]);cur=[p];start=p;ci+=2;}
+        else if(op===OPS.lineTo){if(!cur){cur=[P(co[ci],co[ci+1])];start=cur[0];}else cur.push(P(co[ci],co[ci+1]));ci+=2;}
+        else if(op===OPS.curveTo){var p0=cur[cur.length-1];bez(cur,p0,P(co[ci],co[ci+1]),P(co[ci+2],co[ci+3]),P(co[ci+4],co[ci+5]));ci+=6;}
+        else if(op===OPS.curveTo2){var p0=cur[cur.length-1];var e=P(co[ci+2],co[ci+3]);bez(cur,p0,p0,P(co[ci],co[ci+1]),e);ci+=4;}
+        else if(op===OPS.curveTo3){var p0=cur[cur.length-1];var e=P(co[ci+2],co[ci+3]);bez(cur,p0,P(co[ci],co[ci+1]),e,e);ci+=4;}
+        else if(op===OPS.rectangle){var x=co[ci],y=co[ci+1],w=co[ci+2],h=co[ci+3];flush();cur=[P(x,y),P(x+w,y),P(x+w,y+h),P(x,y+h),P(x,y)];flush();ci+=4;}
+        else if(op===OPS.closePath){if(cur&&start)cur.push(start);}
+      }
+      flush();
+    }
+  }
+  flush();
+  var k=25.4/72; // points → mm
+  return subs.map(function(p){return p.map(function(q){return [q[0]*k,q[1]*k];});});
+}
+function clearResults(){
+  ["sModules","sLoops"].forEach(function(id){document.getElementById(id).textContent="—";});
+  document.getElementById("sDens").innerHTML='—<small> /m²</small>';
+  document.getElementById("sPower").innerHTML='—<small> W</small>';
+  document.getElementById("alerts").innerHTML='<div class="empty-note">Lancez un calcul pour obtenir les contrôles.</div>';
+  document.getElementById("tfBlock").innerHTML='<div class="empty-note">Renseignez la puissance/module et les plafonds par transfo.</div>';
+  document.getElementById("planBlock").innerHTML='<div class="empty-note">—</div>';
+}
+
+/* ============================ LIBRARY UI ============================ */
+function renderLibrary(){
+  var list=document.getElementById("modList");
+  var sel=document.getElementById("selMod");
+  if(!state.modules.length){list.innerHTML='<div class="empty-note">Aucun module. Créez votre premier module avec ses dimensions, ses configurations de pose et ses plafonds transfo.</div>';}
+  else{
+    list.innerHTML=state.modules.map(function(m){
+      var fronts=(m.poses||[]).map(function(p){return p.front;}).join(" / ");
+      return '<div class="mod" data-id="'+m.id+'"><div class="mh"><span class="mn">'+esc(m.name)+'</span><span class="mw">'+m.pow+' W</span></div>'
+        +'<div class="md">'+m.len+'×'+m.wid+'mm · '+(m.poses?m.poses.length:0)+' config. fond/face : '+fronts+'</div>'
+        +'<div class="acts"><button class="mini" data-edit="'+m.id+'">Modifier</button><button class="mini" data-del="'+m.id+'">Supprimer</button></div></div>';
+    }).join("");
+  }
+  var cur=sel.value;
+  sel.innerHTML='<option value="">— choisir —</option>'+state.modules.map(function(m){return '<option value="'+m.id+'">'+esc(m.name)+'</option>';}).join("");
+  if(cur&&state.modules.find(function(m){return m.id===cur;}))sel.value=cur;
+  markActiveMod();
+}
+function markActiveMod(){
+  var id=document.getElementById("selMod").value;
+  document.querySelectorAll(".mod").forEach(function(el){el.classList.toggle("active",el.getAttribute("data-id")===id);});
+}
+function esc(s){return (s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
+
+/* ---- éditeur de configurations de pose dans le modal ---- */
+function poseDefault(){return {front:80,bande:140,edge:40,maxsp:140,perm2:50};}
+function scrapePoseRows(){
+  var arr=[];
+  document.querySelectorAll("#poseRows .pose-row").forEach(function(row){
+    function v(k,d){var el=row.querySelector('input[data-k="'+k+'"]');return el?(+el.value||d):d;}
+    arr.push({front:v("front",80),bande:v("bande",140),edge:v("edge",40),maxsp:v("maxsp",140),perm2:v("perm2",50)});
+  });
+  return arr;
+}
+function renderPoseRows(){
+  var host=document.getElementById("poseRows");
+  host.innerHTML=state.modalPoses.map(function(p,i){
+    function inp(k){return '<input type="number" step="1" data-k="'+k+'" value="'+p[k]+'">';}
+    return '<div class="pose-row">'+inp("front")+inp("bande")+inp("edge")+inp("maxsp")+inp("perm2")
+      +'<button class="rm" data-rm="'+i+'" title="Supprimer">×</button></div>';
+  }).join("");
+}
+function openModal(id){
+  state.editId=id||null;
+  var m=id?state.modules.find(function(x){return x.id===id;}):null;
+  document.getElementById("modalTitle").textContent=m?"Modifier le module":"Nouveau module";
+  var f=m||{name:"",len:50,wid:20,poses:[poseDefault()],pow:1.2,t:{40:28,60:42,100:70,150:105,200:140}};
+  document.getElementById("f_name").value=f.name;
+  document.getElementById("f_len").value=f.len;
+  document.getElementById("f_wid").value=f.wid;
+  document.getElementById("f_pow").value=f.pow;
+  document.getElementById("f_t40").value=f.t[40];
+  document.getElementById("f_t60").value=f.t[60];
+  document.getElementById("f_t100").value=f.t[100];
+  document.getElementById("f_t150").value=f.t[150];
+  document.getElementById("f_t200").value=f.t[200];
+  state.modalPoses=(f.poses&&f.poses.length?f.poses:[poseDefault()]).map(function(p){return Object.assign({},p);});
+  renderPoseRows();
+  document.getElementById("overlay").classList.add("show");
+}
+function closeModal(){document.getElementById("overlay").classList.remove("show");}
+function saveModal(){
+  var poses=scrapePoseRows();
+  if(!poses.length)poses=[poseDefault()];
+  var rec={
+    id:state.editId||uid(),
+    name:document.getElementById("f_name").value.trim()||"Module sans nom",
+    len:+document.getElementById("f_len").value||50,
+    wid:+document.getElementById("f_wid").value||20,
+    poses:poses,
+    pow:+document.getElementById("f_pow").value||1,
+    t:{40:+document.getElementById("f_t40").value||0,60:+document.getElementById("f_t60").value||0,100:+document.getElementById("f_t100").value||0,150:+document.getElementById("f_t150").value||0,200:+document.getElementById("f_t200").value||0}
+  };
+  if(state.editId){var i=state.modules.findIndex(function(m){return m.id===state.editId;});state.modules[i]=rec;}
+  else state.modules.push(rec);
+  saveModules();renderLibrary();populatePoses();renderPoseDetail();closeModal();
+}
+
+/* ============================ MISC ============================ */
+function setPill(kind,txt){var p=document.getElementById("stPill");p.className="pill "+(kind==="ready"?"ready":"idle");p.textContent=txt;}
+
+/* ============================ EVENTS ============================ */
+function bind(){
+  document.getElementById("btnImport").onclick=document.getElementById("btnImport2").onclick=function(){var fi=document.getElementById("fileInput");fi.value="";fi.click();};
+  document.getElementById("fileInput").onchange=function(e){var f=e.target.files[0];if(f)handleFile(f);e.target.value="";};
+  // glisser-déposer sur la zone de travail
+  var vp=document.getElementById("viewport");
+  ["dragenter","dragover"].forEach(function(ev){vp.addEventListener(ev,function(e){e.preventDefault();vp.style.outline="2px dashed var(--led)";vp.style.outlineOffset="-8px";});});
+  ["dragleave","drop"].forEach(function(ev){vp.addEventListener(ev,function(e){e.preventDefault();vp.style.outline="none";});});
+  vp.addEventListener("drop",function(e){var f=e.dataTransfer&&e.dataTransfer.files[0];if(f&&/\.(dxf|pdf|ai)$/i.test(f.name))handleFile(f);});
+  document.getElementById("btnAddMod").onclick=function(){openModal(null);};
+  document.getElementById("modalClose").onclick=document.getElementById("modalCancel").onclick=closeModal;
+  document.getElementById("modalSave").onclick=saveModal;
+  document.getElementById("overlay").onclick=function(e){if(e.target===this)closeModal();};
+  document.getElementById("modList").onclick=function(e){
+    var ed=e.target.getAttribute("data-edit"),dl=e.target.getAttribute("data-del");
+    if(ed){openModal(ed);return;}
+    if(dl){if(confirm("Supprimer ce module ?")){state.modules=state.modules.filter(function(m){return m.id!==dl;});saveModules();renderLibrary();}return;}
+    var card=e.target.closest(".mod");if(card){document.getElementById("selMod").value=card.getAttribute("data-id");onSelMod();}
+  };
+  document.getElementById("selMod").onchange=onSelMod;
+  document.getElementById("selPose").onchange=onSelPose;
+  document.getElementById("addPose").onclick=function(){state.modalPoses=scrapePoseRows();state.modalPoses.push(poseDefault());renderPoseRows();};
+  document.getElementById("poseRows").onclick=function(e){
+    var rm=e.target.getAttribute("data-rm")||(e.target.closest("button")&&e.target.closest("button").getAttribute("data-rm"));
+    if(rm!=null){state.modalPoses=scrapePoseRows();state.modalPoses.splice(+rm,1);if(!state.modalPoses.length)state.modalPoses=[poseDefault()];renderPoseRows();}
+  };
+  document.getElementById("btnRun").onclick=run;
+  document.getElementById("btnExport").onclick=exportDxf;
+  document.getElementById("btnBom").onclick=exportBom;
+  document.getElementById("btnFit").onclick=fitView;
+  ["tDesign","tLed","tWire","tGrid"].forEach(function(id){document.getElementById(id).onchange=function(){
+    document.getElementById("legend").classList.toggle("show",document.getElementById("tWire").checked&&state.wireLoops.length>0);
+    draw();
+  };});
+  ["pAngle","pLoop"].forEach(function(id){document.getElementById(id).onchange=function(){if(state.plan)run();};});
+  document.getElementById("pUnit").onchange=function(){if(state.rawDxf){var f=new File([state.rawDxf],state.fileName||"design.dxf");handleFile(f);}};
+
+  // canvas interaction
+  cv.addEventListener("wheel",function(e){
+    e.preventDefault();
+    var rect=cv.getBoundingClientRect();var mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    var w=S2W(mx,my);var f=e.deltaY<0?1.12:1/1.12;
+    state.view.scale*=f;
+    var ns=W2S(w[0],w[1]);
+    state.view.ox+=mx-ns[0];state.view.oy+=my-ns[1];
+    document.getElementById("stZoom").textContent=Math.round(state.view.scale/(initScale||1)*100)+"%";
+    draw();
+  },{passive:false});
+  cv.addEventListener("mousedown",function(e){state.drag={x:e.clientX,y:e.clientY,ox:state.view.ox,oy:state.view.oy};});
+  window.addEventListener("mouseup",function(){state.drag=null;});
+  window.addEventListener("mousemove",function(e){
+    var rect=cv.getBoundingClientRect();var mx=e.clientX-rect.left,my=e.clientY-rect.top;
+    if(mx>=0&&my>=0&&mx<=rect.width&&my<=rect.height){var w=S2W(mx,my);document.getElementById("stCur").textContent=Math.round(w[0])+" , "+Math.round(w[1])+" mm";}
+    if(state.drag){state.view.ox=state.drag.ox+(e.clientX-state.drag.x);state.view.oy=state.drag.oy+(e.clientY-state.drag.y);draw();}
+  });
+  window.addEventListener("resize",resizeCanvas);
+}
+var initScale=null;
+function populatePoses(){
+  var mod=getSelectedModule();
+  var sel=document.getElementById("selPose");
+  if(!mod){sel.innerHTML='<option value="">— choisir un module —</option>';return;}
+  var prev=sel.value;
+  sel.innerHTML=(mod.poses||[]).map(function(p,i){return '<option value="'+i+'">'+p.front+' mm — bandes '+p.bande+', max '+p.maxsp+'</option>';}).join("");
+  // garde la sélection si possible, sinon première config
+  if(prev!==""&&mod.poses&&mod.poses[+prev])sel.value=prev; else sel.value="0";
+}
+function onSelMod(){
+  populatePoses();renderPoseDetail();markActiveMod();updateRunState();
+}
+function onSelPose(){
+  renderPoseDetail();updateRunState();
+  if(state.plan&&getSelectedPose())run();
+}
+function updateRunState(){
+  document.getElementById("btnRun").disabled=!(getSelectedModule()&&getSelectedPose()&&state.loops.length);
+}
+
+/* ============================ INIT ============================ */
+(async function(){
+  await loadModules();
+  renderLibrary();renderPoseDetail();bind();resizeCanvas();
+  // remember a reference scale for zoom % after first fit
+  var origFit=fitView;
+  fitView=function(){origFit();if(initScale===null)initScale=state.view.scale;document.getElementById("stZoom").textContent="100%";};
+})();
+</script>
+</body>
+</html>
