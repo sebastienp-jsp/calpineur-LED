@@ -165,34 +165,47 @@
     <!-- LEFT : selection + project params -->
     <div class="col left">
       <div class="sec">
-        <h3><span class="n">01</span> Fond / face</h3>
-        <div class="field">
-          <label>Profondeur fond/face à réaliser <span class="u">mm</span></label>
-          <div style="display:flex;gap:8px">
-            <input type="number" id="inpFront" min="1" step="1" placeholder="ex. 57" style="flex:1">
-            <button class="btn primary" id="btnValidFront" style="padding:8px 16px;white-space:nowrap">Valider</button>
-          </div>
-          <div class="hint">Saisis la profondeur exacte puis <b>Valider</b> (ou Entrée). La valeur est arrondie à la dizaine la plus proche (54 → 50, 57 → 60) ; on applique la config du module à cette dizaine, ou la dizaine suivante dans le même sens si elle n'existe pas.</div>
-        </div>
-        <div class="field">
-          <label>Module adapté</label>
-          <select id="selMod"><option value="">— choisir d'abord un fond/face —</option></select>
+        <h3><span class="n">01</span> Importer le fichier</h3>
+        <button class="btn primary" id="btnImportStep" style="width:100%;justify-content:center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>Importer DXF / PDF / AI</button>
+        <div id="impInfo" class="empty-note" style="margin-top:8px">Aucun fichier importé.</div>
+        <div class="field" style="margin-top:8px">
+          <label>Unité du fichier importé (DXF)</label>
+          <select id="pUnit"><option value="1">Millimètres</option><option value="10">Centimètres</option><option value="25.4">Pouces</option><option value="1000">Mètres</option></select>
+          <div class="hint">S'applique aux <b>DXF</b>. Les <b>PDF / AI</b> sont convertis automatiquement (sortie en mm).</div>
         </div>
       </div>
 
       <div class="sec">
-        <h3><span class="n">02</span> Import</h3>
+        <h3><span class="n">02</span> Nettoyer / valider</h3>
+        <button class="btn" id="btnWireframeStep" style="width:100%;justify-content:center" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>Vérifier les contours (fil de fer)</button>
+        <div id="wfStatus" class="empty-note" style="margin-top:8px">Importe un fichier pour vérifier les contours.</div>
+      </div>
+
+      <div class="sec">
+        <h3><span class="n">03</span> Profondeur fond / face</h3>
         <div class="field">
-          <label>Unité du fichier importé (DXF)</label>
-          <select id="pUnit"><option value="1">Millimètres</option><option value="10">Centimètres</option><option value="25.4">Pouces</option><option value="1000">Mètres</option></select>
-          <div class="hint">S'applique aux <b>DXF</b> : coordonnées ramenées en mm pour le calcul puis réexportées dans l'unité d'origine. Les <b>PDF / AI</b> sont convertis automatiquement (sortie DXF en mm).</div>
+          <label>Profondeur fond/face à réaliser <span class="u">mm</span></label>
+          <div style="display:flex;gap:8px">
+            <input type="number" id="inpFront" min="1" step="1" placeholder="ex. 57" style="flex:1" disabled>
+            <button class="btn primary" id="btnValidFront" style="padding:8px 16px;white-space:nowrap" disabled>Valider</button>
+          </div>
+          <div class="hint">Saisis la profondeur exacte puis <b>Valider</b> (ou Entrée). La valeur est arrondie à la dizaine la plus proche (54 → 50, 57 → 60) ; on applique la config du module à cette dizaine, ou la dizaine suivante dans le même sens si elle n'existe pas.</div>
         </div>
-        <button class="btn primary" id="btnRun" style="width:100%;justify-content:center;margin-top:6px" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-14 9V3z"/></svg>Calculer le calepinage</button>
+      </div>
+
+      <div class="sec">
+        <h3><span class="n">04</span> Module adapté</h3>
+        <div class="field">
+          <label>Module proposé selon la profondeur et la graisse des lettres</label>
+          <select id="selMod" disabled><option value="">— valide d'abord un fond/face —</option></select>
+        </div>
+        <div id="poseDetail" class="empty-note">Choisis un fond/face puis un module.</div>
       </div>
 
       <div class="sec" style="flex:1">
-        <h3><span class="n">03</span> Pose sélectionnée</h3>
-        <div id="poseDetail" class="empty-note">Choisissez un fond/face puis un module.</div>
+        <h3><span class="n">05</span> Calepinage</h3>
+        <button class="btn primary" id="btnRun" style="width:100%;justify-content:center" disabled><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-14 9V3z"/></svg>Calculer le calepinage</button>
+        <div class="hint" style="margin-top:8px">Le placement suit le tracé des lettres : 1 bande dans les parties fines, 2-3 dans les pleins, sans zone d'ombre.</div>
       </div>
     </div>
 
@@ -1161,6 +1174,36 @@ function readPdfAi(file){
   };
   rd.readAsArrayBuffer(file);
 }
+function contourStats(){
+  var closed=state.loops.length, holes=0;
+  state.loops.forEach(function(p){var d=0;state.loops.forEach(function(q){if(q!==p&&pointInPoly(p[0],q))d++;});if(d%2===1)holes++;});
+  var open=0;
+  state.designSegs.forEach(function(p){
+    var cl=p.length>2&&Math.hypot(p[0][0]-p[p.length-1][0],p[0][1]-p[p.length-1][1])<1e-6;
+    if(!cl && !state.loops.some(function(l){return l.length===p.length;}))open++;
+  });
+  return {closed:closed, holes:holes, open:open};
+}
+function updateImportInfo(sourceLabel){
+  var info=document.getElementById("impInfo");
+  if(!state.bbox||(!state.loops.length&&!state.designSegs.length)){info.className="empty-note";info.textContent="Aucun fichier importé.";return;}
+  var w=Math.round(state.bbox.maxX-state.bbox.minX), h=Math.round(state.bbox.maxY-state.bbox.minY);
+  info.className="";
+  info.innerHTML='<div style="font-weight:600;color:var(--tx);word-break:break-all">'+esc(state.fileName||sourceLabel||"design")+'</div>'
+    +'<div class="mono" style="margin-top:4px">Dimensions : '+w+' × '+h+' mm <span style="color:var(--tx3)">('+(w/10).toFixed(1)+' × '+(h/10).toFixed(1)+' cm)</span></div>';
+  var st=contourStats(),wf=document.getElementById("wfStatus");
+  var parts='<span style="color:#4FA8FF">●</span> '+st.closed+' fermé'+(st.closed>1?'s':'')
+    +' &nbsp;<span style="color:#FF5C5C">●</span> '+st.holes+' contre-forme'+(st.holes>1?'s':'')
+    +' &nbsp;<span style="color:#9aa">●</span> '+st.open+' non fermé'+(st.open>1?'s':'');
+  wf.className=""; wf.innerHTML='<div>'+parts+'</div>'+(st.open>0?'<div style="color:var(--warn);margin-top:4px">Les tracés non fermés (noir) ne seront pas calepinés — corrige-les dans Illustrator.</div>':'<div style="color:var(--ok);margin-top:4px">Contours OK pour le calepinage.</div>');
+}
+function setStepLocks(){
+  var hasGeom=state.loops.length>0;
+  document.getElementById("btnWireframeStep").disabled=!(state.loops.length||state.designSegs.length);
+  document.getElementById("inpFront").disabled=!hasGeom;
+  document.getElementById("btnValidFront").disabled=!hasGeom;
+  if(!hasGeom){document.getElementById("selMod").disabled=true;document.getElementById("selMod").innerHTML='<option value="">— importe un fichier —</option>';}
+}
 function finalizeGeometry(segsMm, loopsMm, sourceLabel){
   var fr=stripFrames(loopsMm, segsMm);
   state.designSegs=fr.segs;
@@ -1175,7 +1218,10 @@ function finalizeGeometry(segsMm, loopsMm, sourceLabel){
   document.getElementById("btnExport").disabled=true;
   document.getElementById("btnBom").disabled=true;
   document.getElementById("legend").classList.remove("show");
+  document.getElementById("tWireframe").checked=false;
   clearResults();
+  updateImportInfo(sourceLabel);
+  setStepLocks();
   var note=fr.removed?(" · "+fr.removed+" cadre"+(fr.removed>1?"s":"")+" ignoré"+(fr.removed>1?"s":"")):"";
   setPill("idle", state.loops.length?(state.loops.length+" contours détectés"+note+" · "+sourceLabel):("aucun contour fermé · "+sourceLabel));
   fitView();
@@ -1269,6 +1315,7 @@ function refreshSelectors(){
 function populateModulesForFront(){
   var D=getFront();
   var selM=document.getElementById("selMod");
+  selM.disabled = !(state.loops.length>0);
   if(D==null){selM.innerHTML='<option value="">— saisis d\'abord un fond/face —</option>';return;}
   var matches=state.modules.filter(function(m){return moduleAdapted(m,D);});
   var cur=selM.value;
@@ -1350,8 +1397,14 @@ function setPill(kind,txt){var p=document.getElementById("stPill");p.className="
 
 /* ============================ EVENTS ============================ */
 function bind(){
-  document.getElementById("btnImport").onclick=document.getElementById("btnImport2").onclick=function(){var fi=document.getElementById("fileInput");fi.value="";fi.click();};
+  document.getElementById("btnImport").onclick=document.getElementById("btnImport2").onclick=document.getElementById("btnImportStep").onclick=function(){var fi=document.getElementById("fileInput");fi.value="";fi.click();};
   document.getElementById("fileInput").onchange=function(e){var f=e.target.files[0];if(f)handleFile(f);e.target.value="";};
+  // étape 2 : bouton fil de fer (synchronisé avec le toggle de la barre du dessin)
+  document.getElementById("btnWireframeStep").onclick=function(){
+    if(this.disabled)return;
+    var t=document.getElementById("tWireframe");t.checked=!t.checked;
+    t.onchange();
+  };
   // glisser-déposer sur la zone de travail
   var vp=document.getElementById("viewport");
   ["dragenter","dragover"].forEach(function(ev){vp.addEventListener(ev,function(e){e.preventDefault();vp.style.outline="2px dashed var(--led)";vp.style.outlineOffset="-8px";});});
@@ -1388,6 +1441,7 @@ function bind(){
     if(id==="tWireframe"){
       if(wf){["tDesign","tLed","tWire","tGrid"].forEach(function(o){document.getElementById(o).checked=false;});}
       else{document.getElementById("tDesign").checked=true;document.getElementById("tLed").checked=true;document.getElementById("tGrid").checked=true;}
+      document.getElementById("btnWireframeStep").classList.toggle("primary",wf);
     }
     document.getElementById("legend").classList.toggle("show",!wf&&document.getElementById("tWire").checked&&state.wireLoops.length>0);
     draw();
