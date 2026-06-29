@@ -167,9 +167,9 @@
       <div class="sec">
         <h3><span class="n">01</span> Fond / face</h3>
         <div class="field">
-          <label>Profondeur fond/face à réaliser</label>
-          <select id="selFront"><option value="">— choisir —</option></select>
-          <div class="hint">C'est la contrainte de départ. Elle filtre automatiquement les modules adaptés à cette profondeur.</div>
+          <label>Profondeur fond/face à réaliser <span class="u">mm</span></label>
+          <input type="number" id="inpFront" min="1" step="1" placeholder="ex. 57">
+          <div class="hint">Saisis la profondeur exacte. Les modules dont une configuration correspond (à ±15 mm près) deviennent sélectionnables ; la config la plus proche est appliquée.</div>
         </div>
         <div class="field">
           <label>Module adapté</label>
@@ -573,9 +573,20 @@ function transfoPlan(N,mod,maxPerLoop,wireLoops){
 
 /* ============================ RUN ============================ */
 function getSelectedModule(){var id=document.getElementById("selMod").value;return state.modules.find(function(m){return m.id===id;});}
-function getSelectedPose(){var mod=getSelectedModule();if(!mod||!mod.poses)return null;var fr=document.getElementById("selFront").value;if(fr==="")return null;fr=+fr;return mod.poses.find(function(p){return p.front===fr;})||null;}
+var FRONT_TOL=15; // tolérance (mm) autour des configs d'un module
+function getFront(){var v=parseFloat(document.getElementById("inpFront").value);return isFinite(v)?v:null;}
+function nearestPose(mod,D){
+  if(!mod||!mod.poses||!mod.poses.length||D==null)return null;
+  return mod.poses.reduce(function(best,p){return (best===null||Math.abs(p.front-D)<Math.abs(best.front-D))?p:best;},null);
+}
+function moduleAdapted(mod,D){
+  if(!mod||!mod.poses||!mod.poses.length||D==null)return false;
+  var fronts=mod.poses.map(function(p){return p.front;});
+  return D>=Math.min.apply(null,fronts)-FRONT_TOL && D<=Math.max.apply(null,fronts)+FRONT_TOL;
+}
+function getSelectedPose(){var mod=getSelectedModule();var D=getFront();if(!mod||D==null||!moduleAdapted(mod,D))return null;return nearestPose(mod,D);}
 function run(){
-  var mod=getSelectedModule(), pose=getSelectedPose();
+  var mod=getSelectedModule(), pose=getSelectedPose(), D=getFront();
   if(!mod||!pose||!state.loops.length)return;
   var maxPerLoop=Math.max(1,parseInt(mod.loop)||20);
   var res=fillCalepinage(state.loops,pose.bande,pose.edge,pose.maxsp,Math.min(mod.len,mod.wid));
@@ -585,15 +596,15 @@ function run(){
   state.gridStep=Math.max(10,pose.bande);
   state.plan=transfoPlan(res.pts.length,mod,maxPerLoop,state.wireLoops);
   document.getElementById("tWire").checked=false;
-  renderResults(mod,pose);
+  renderResults(mod,pose,D);
   draw();
   document.getElementById("btnExport").disabled=res.pts.length===0;
   document.getElementById("btnBom").disabled=res.pts.length===0;
-  setPill(res.pts.length?"ready":"idle", res.pts.length?(res.pts.length+" modules placés · fond/face "+pose.front+" mm"):"aucun point");
+  setPill(res.pts.length?"ready":"idle", res.pts.length?(res.pts.length+" modules placés · fond/face "+D+" mm"):"aucun point");
 }
 
 /* ============================ RESULTS UI ============================ */
-function renderResults(mod,pose){
+function renderResults(mod,pose,D){
   var N=state.ledPts.length;
   document.getElementById("sModules").textContent=N;
   document.getElementById("sLoops").textContent=state.wireLoops.length;
@@ -603,8 +614,9 @@ function renderResults(mod,pose){
 
   // alerts
   var al=[];
-  var reco=recoSpacing(pose.front,mod.angle||160);
-  if(pose.maxsp>1.3*reco) al.push(["bad","Espacement entre modules ("+pose.maxsp+" mm) très supérieur au recommandé (~"+Math.round(reco)+" mm) pour "+pose.front+" mm de fond/face — risque de points sombres sur la face."]);
+  var reco=recoSpacing(D,mod.angle||160);
+  if(D!==pose.front) al.push(["warn","Profondeur saisie "+D+" mm — config la plus proche appliquée : "+pose.front+" mm (écart "+Math.round(Math.abs(D-pose.front))+" mm)."]);
+  if(pose.maxsp>1.3*reco) al.push(["bad","Espacement entre modules ("+pose.maxsp+" mm) très supérieur au recommandé (~"+Math.round(reco)+" mm) pour "+D+" mm de fond/face — risque de points sombres sur la face."]);
   else if(pose.maxsp>reco) al.push(["warn","Espacement entre modules ("+pose.maxsp+" mm) au-delà du recommandé (~"+Math.round(reco)+" mm) — recouvrement limite, à vérifier sur face peu diffusante."]);
   else al.push(["ok","Espacement modules / fond-face cohérent avec l'angle (recommandé ~"+Math.round(reco)+" mm)."]);
   if(pose.bande>1.3*reco) al.push(["warn","Entre-bandes ("+pose.bande+" mm) élevé par rapport au recommandé (~"+Math.round(reco)+" mm)."]);
@@ -662,14 +674,15 @@ function buildLegend(){
 
 /* ============================ POSE DETAIL ============================ */
 function renderPoseDetail(){
-  var mod=getSelectedModule(), pose=getSelectedPose();
+  var mod=getSelectedModule(), pose=getSelectedPose(), D=getFront();
   var el=document.getElementById("poseDetail");
-  if(document.getElementById("selFront").value===""){el.className="empty-note";el.textContent="Choisissez d'abord un fond/face.";return;}
-  if(!mod){el.className="empty-note";el.textContent="Choisissez un module adapté à ce fond/face.";return;}
-  if(!pose){el.className="empty-note";el.textContent="Ce module n'a pas de configuration pour ce fond/face.";return;}
+  if(D==null){el.className="empty-note";el.textContent="Saisis d'abord une profondeur fond/face.";return;}
+  if(!mod){el.className="empty-note";el.textContent="Choisis un module adapté à ce fond/face.";return;}
+  if(!pose){el.className="empty-note";el.textContent="Ce module n'a pas de configuration proche de "+D+" mm.";return;}
   el.className="";
+  var frontCell=(D===pose.front)?(D+' mm'):(D+' mm <span style="color:var(--mut)">(config '+pose.front+' mm)</span>');
   el.innerHTML='<table class="tf"><tr><td>Module</td><td>'+esc(mod.name)+'</td></tr>'
-    +'<tr><td>Fond / face</td><td>'+pose.front+' mm</td></tr>'
+    +'<tr><td>Fond / face</td><td>'+frontCell+'</td></tr>'
     +'<tr><td>Entre bandes</td><td>'+pose.bande+' mm</td></tr>'
     +'<tr><td>Côté → 1ʳᵉ bande</td><td>'+pose.edge+' mm</td></tr>'
     +'<tr><td>Entre modules max</td><td>'+pose.maxsp+' mm</td></tr>'
@@ -826,12 +839,12 @@ function exportDxf(){
   download(base+"_LED.dxf",out,"application/dxf");
 }
 function exportBom(){
-  var mod=getSelectedModule(), pose=getSelectedPose();if(!mod||!pose)return;
+  var mod=getSelectedModule(), pose=getSelectedPose(), D=getFront();if(!mod||!pose||D==null)return;
   var N=state.ledPts.length,p=state.plan,volt=mod.volt||12;
   var rows=[["Référence module",mod.name],["Modules total",N],["Boucles",state.wireLoops.length],["Modules/boucle max",mod.loop],
     ["Densité /m²",state.litAreaM2>0?Math.round(N/state.litAreaM2):0],
     ["Puissance totale (W)",(N*mod.pow).toFixed(1)],["Tension (V)",volt],["Intensité totale (A)",(N*mod.pow/volt).toFixed(1)],["Angle éclairage (°)",mod.angle],
-    ["Fond/face (mm)",pose.front],["Entre bandes (mm)",pose.bande],["Entre modules max (mm)",pose.maxsp],["Côté 1ʳᵉ bande (mm)",pose.edge],["Modules/m² cible",pose.perm2],["Dimensions module (mm)",mod.len+" x "+mod.wid]];
+    ["Fond/face saisi (mm)",D],["Config appliquée (mm)",pose.front],["Entre bandes (mm)",pose.bande],["Entre modules max (mm)",pose.maxsp],["Côté 1ʳᵉ bande (mm)",pose.edge],["Modules/m² cible",pose.perm2],["Dimensions module (mm)",mod.len+" x "+mod.wid]];
   if(p&&p.best){rows.push(["Transfo recommandé",p.best.qty+" x "+p.best.t+" W ("+volt+" V)"]);rows.push(["Charge transfo",p.best.util+"%"]);}
   if(p&&p.assign){p.assign.forEach(function(tx,i){rows.push(["Transfo T"+(i+1)+" ("+p.best.t+" W)",tx.n+" modules / "+tx.loops.length+" boucles / "+(tx.n*mod.pow/volt).toFixed(1)+" A"]);});}
   var csv=rows.map(function(r){return '"'+r[0]+'","'+r[1]+'"';}).join("\n");
@@ -983,28 +996,26 @@ function renderLibrary(){
   }
   refreshSelectors();
 }
-// distinct fond/face values across all modules → premier sélecteur
 function refreshSelectors(){
-  var selF=document.getElementById("selFront");
-  var fronts={};
-  state.modules.forEach(function(m){(m.poses||[]).forEach(function(p){fronts[p.front]=true;});});
-  var vals=Object.keys(fronts).map(Number).sort(function(a,b){return a-b;});
-  var cur=selF.value;
-  selF.innerHTML='<option value="">— choisir —</option>'+vals.map(function(v){return '<option value="'+v+'">'+v+' mm</option>';}).join("");
-  if(cur!==""&&fronts[cur])selF.value=cur; else selF.value="";
   populateModulesForFront();
 }
-// modules ayant une config pour le fond/face choisi
+// modules adaptés à la profondeur saisie (config la plus proche, dans la tolérance)
 function populateModulesForFront(){
-  var fr=document.getElementById("selFront").value;
+  var D=getFront();
   var selM=document.getElementById("selMod");
-  if(fr===""){selM.innerHTML='<option value="">— choisir d\'abord un fond/face —</option>';return;}
-  fr=+fr;
-  var matches=state.modules.filter(function(m){return (m.poses||[]).some(function(p){return p.front===fr;});});
+  if(D==null){selM.innerHTML='<option value="">— saisis d\'abord un fond/face —</option>';return;}
+  var matches=state.modules.filter(function(m){return moduleAdapted(m,D);});
   var cur=selM.value;
-  if(!matches.length){selM.innerHTML='<option value="">aucun module pour ce fond/face</option>';}
-  else{selM.innerHTML='<option value="">— choisir —</option>'+matches.map(function(m){return '<option value="'+m.id+'">'+esc(m.name)+'</option>';}).join("");}
-  if(cur&&matches.find(function(m){return m.id===cur;}))selM.value=cur;
+  if(!matches.length){selM.innerHTML='<option value="">aucun module adapté à '+D+' mm</option>';}
+  else{selM.innerHTML='<option value="">— choisir —</option>'+matches.map(function(m){
+    var np=nearestPose(m,D);
+    var tag=(np&&np.front!==D)?(' (config '+np.front+' mm)'):'';
+    return '<option value="'+m.id+'">'+esc(m.name)+tag+'</option>';
+  }).join("");
+  // sélection auto si un seul module adapté
+  if(matches.length===1) selM.value=matches[0].id;
+  else if(cur&&matches.find(function(m){return m.id===cur;}))selM.value=cur;
+  }
 }
 function esc(s){return (s||"").replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
 
@@ -1094,7 +1105,8 @@ function bind(){
     if(ed){openModal(ed);return;}
     if(dl){if(confirm("Supprimer ce module ?")){state.modules=state.modules.filter(function(m){return m.id!==dl;});saveModules();renderLibrary();renderPoseDetail();updateRunState();}return;}
   };
-  document.getElementById("selFront").onchange=onSelFront;
+  document.getElementById("inpFront").addEventListener("input",onSelFront);
+  document.getElementById("inpFront").addEventListener("change",function(){if(state.plan&&getSelectedPose())run();});
   document.getElementById("selMod").onchange=onSelMod;
   document.getElementById("addPose").onclick=function(){state.modalPoses=scrapePoseRows();state.modalPoses.push(poseDefault());renderPoseRows();};
   document.getElementById("poseRows").onclick=function(e){
@@ -1135,7 +1147,6 @@ var initScale=null;
 function onSelFront(){
   populateModulesForFront();
   renderPoseDetail();updateRunState();
-  if(state.plan&&getSelectedPose())run();
 }
 function onSelMod(){
   renderPoseDetail();updateRunState();
