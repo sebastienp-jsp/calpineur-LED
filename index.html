@@ -730,33 +730,24 @@ function buildBandsEngine(loops,opt){
     if(gl>1e-9){gx/=gl;gy/=gl;for(st=1;st<=Math.ceil(MW/cell)+2;st++){var ix=x+gx*cell*st,iy=y+gy*cell*st;if(footprintInside(ix,iy,ang))return [ix,iy];}}
     return null;
   }
-  // 1) traits-guides "racetrack" = contours décalés vers l'intérieur (iso à côté, côté+bande, …) — lisses
-  var guides=[], isoPts=[];
-  for(var L=opt.edge; L<=df.maxD-cell*1.5; L+=opt.bande){
-    chain(marchingSquares(D,r,L),cell*1.6).forEach(function(pl){
-      if(pl.length<4)return; var sm=smoothPolyline(pl,2); guides.push(sm); sm.forEach(function(pp){isoPts.push(pp);});
-    });
-  }
-  // 2) axe central pour les traits fins / centres larges non couverts par un racetrack
-  var bucket=Math.max(opt.bande,1),grid={};
-  isoPts.forEach(function(p){var k=Math.round(p[0]/bucket)+","+Math.round(p[1]/bucket);(grid[k]=grid[k]||[]).push(p);});
-  function nearIso(p){var bx=Math.round(p[0]/bucket),by=Math.round(p[1]/bucket);for(var dx=-1;dx<=1;dx++)for(var dy=-1;dy<=1;dy++){var a=grid[(bx+dx)+","+(by+dy)];if(a)for(var i=0;i<a.length;i++)if(Math.hypot(a[i][0]-p[0],a[i][1]-p[1])<opt.bande*0.6)return true;}return false;}
-  var medials=extendEnds(chainPolylines(traceSkeleton(skeletonize(r.mask,r.w,r.h),r.w,r.h,r,cell),cell*3),r,cell);
+  // 1) SQUELETTE partout = l'axe de chaque trait (lissé, prolongé jusqu'aux extrémités)
+  var medials=extendEnds(chainPolylines(traceSkeleton(skeletonize(r.mask,r.w,r.h),r.w,r.h,r,cell),cell*3),r,cell).map(function(p){return smoothPolyline(p,3);});
+  var guides=medials;
+  // 2) le long du squelette : règle bandes — n = max(1, ceil(G/E)-1), pas uniforme G/(n+1), bandes réparties (≤ E du bord)
+  var E=opt.edge, mods=[];
   medials.forEach(function(poly){
-    var sm=smoothPolyline(poly,2),run=[];
-    sm.forEach(function(pp){if(!nearIso(pp)){run.push(pp);}else{if(run.length>=2)guides.push(run);run=[];}});
-    if(run.length>=2)guides.push(run);
-  });
-  // 3) aligner les modules le long de chaque trait-guide, orientés le long du guide (tangente lissée)
-  var mods=[];
-  guides.forEach(function(g){
-    var s=resample(g,opt.maxsp);
+    var s=resample(poly,opt.maxsp);
     for(var k=0;k<s.length;k++){
       var a=s[Math.max(0,k-1)], c2=s[Math.min(s.length-1,k+1)];
       var tx=c2[0]-a[0],ty=c2[1]-a[1],tl=Math.hypot(tx,ty)||1;tx/=tl;ty/=tl;
-      var ang=Math.atan2(ty,tx);
-      var q=fitOrPull(s[k][0],s[k][1],ang,tx,ty);
-      if(q)mods.push({x:q[0],y:q[1],ang:ang});
+      var nx=-ty,ny=tx,ang=Math.atan2(ty,tx);
+      var h=Dat(s[k][0],s[k][1]); if(h<=0)continue;       // demi-largeur locale
+      var G=2*h, n=Math.max(1,Math.ceil(G/E)-1), gap=G/(n+1);
+      for(var i=1;i<=n;i++){
+        var o=i*gap-h;                                     // décalage depuis le centre (centré si n=1)
+        var q=fitOrPull(s[k][0]+nx*o, s[k][1]+ny*o, ang, tx, ty);
+        if(q)mods.push({x:q[0],y:q[1],ang:ang});
+      }
     }
   });
   // 4) anti-chevauchement
