@@ -220,6 +220,7 @@
       <div class="vp-tools" id="vpTools" style="display:none">
         <label class="chip toggle"><input type="checkbox" id="tDesign" checked> Design</label>
         <label class="chip toggle"><input type="checkbox" id="tLed" checked> Points LED</label>
+        <label class="chip toggle"><input type="checkbox" id="tSkel" checked> Squelette</label>
         <label class="chip toggle"><input type="checkbox" id="tWire"> Câblage</label>
         <label class="chip toggle"><input type="checkbox" id="tWireframe"> Fil de fer</label>
         <label class="chip toggle"><input type="checkbox" id="tGrid" checked> Grille</label>
@@ -677,10 +678,28 @@ function traceSkeleton(s,w,h,r,cell){
   function P(x,y){return [r.ox+(x+0.5)*cell, r.oy+(y+0.5)*cell];}
   var nb=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
   function deg(x,y){var d=0;for(var n=0;n<8;n++)if(s[(y+nb[n][1])*w+(x+nb[n][0])])d++;return d;}
-  var vis=new Uint8Array(w*h),runs=[];
-  function walk(x,y){var path=[P(x,y)];vis[y*w+x]=1;var cx=x,cy=y;while(true){var nx=null;for(var n=0;n<8;n++){var ax=cx+nb[n][0],ay=cy+nb[n][1];if(ax<1||ay<1||ax>=w-1||ay>=h-1)continue;var id=ay*w+ax;if(s[id]&&!vis[id]){nx=[ax,ay];break;}}if(!nx)break;vis[nx[1]*w+nx[0]]=1;path.push(P(nx[0],nx[1]));cx=nx[0];cy=nx[1];}return path;}
-  for(var y=1;y<h-1;y++)for(var x=1;x<w-1;x++){var o=y*w+x;if(s[o]&&!vis[o]&&deg(x,y)!==2){var p=walk(x,y);if(p.length)runs.push(p);}}
-  for(var y2=1;y2<h-1;y2++)for(var x2=1;x2<w-1;x2++){var o2=y2*w+x2;if(s[o2]&&!vis[o2]){var p2=walk(x2,y2);if(p2.length)runs.push(p2);}}
+  var ve={}; function ek(x,y,a,b){return x+","+y+"|"+a+","+b;}
+  function nbrs(x,y){var o=[];for(var n=0;n<8;n++){var ax=x+nb[n][0],ay=y+nb[n][1];if(ax<1||ay<1||ax>=w-1||ay>=h-1)continue;if(s[ay*w+ax])o.push([ax,ay]);}return o;}
+  var runs=[];
+  // branche : part d'un nœud spécial (deg≠2), traverse les deg-2, s'arrête au nœud spécial suivant
+  function branch(x0,y0,x1,y1){
+    var path=[P(x0,y0),P(x1,y1)];ve[ek(x0,y0,x1,y1)]=1;ve[ek(x1,y1,x0,y0)]=1;
+    var px=x0,py=y0,cx=x1,cy=y1;
+    while(deg(cx,cy)===2){
+      var ns=nbrs(cx,cy),nx=null;
+      for(var i=0;i<ns.length;i++){if(ns[i][0]===px&&ns[i][1]===py)continue;nx=ns[i];break;}
+      if(!nx)break;
+      ve[ek(cx,cy,nx[0],nx[1])]=1;ve[ek(nx[0],nx[1],cx,cy)]=1;
+      path.push(P(nx[0],nx[1]));px=cx;py=cy;cx=nx[0];cy=nx[1];
+    }
+    return path;
+  }
+  // depuis chaque nœud spécial (extrémité deg1 ou jonction deg≥3), parcourir chaque arête non visitée
+  for(var y=1;y<h-1;y++)for(var x=1;x<w-1;x++){var o=y*w+x;if(!s[o])continue;var dg=deg(x,y);if(dg===2)continue;
+    nbrs(x,y).forEach(function(q){if(!ve[ek(x,y,q[0],q[1])]){runs.push(branch(x,y,q[0],q[1]));}});
+  }
+  // boucles fermées restantes (que des deg-2, ex. un O) : démarrer sur une arête non visitée
+  for(var y2=1;y2<h-1;y2++)for(var x2=1;x2<w-1;x2++){var o2=y2*w+x2;if(!s[o2])continue;var ns2=nbrs(x2,y2);for(var i2=0;i2<ns2.length;i2++){if(!ve[ek(x2,y2,ns2[i2][0],ns2[i2][1])]){runs.push(branch(x2,y2,ns2[i2][0],ns2[i2][1]));}}}
   return runs;
 }
 function sampleInside(r,x,y){var i=Math.round((x-r.ox)/r.cell-0.5),j=Math.round((y-r.oy)/r.cell-0.5);if(i<0||j<0||i>=r.w||j>=r.h)return false;return r.mask[j*r.w+i]===1;}
@@ -730,24 +749,60 @@ function buildBandsEngine(loops,opt){
     if(gl>1e-9){gx/=gl;gy/=gl;for(st=1;st<=Math.ceil(MW/cell)+2;st++){var ix=x+gx*cell*st,iy=y+gy*cell*st;if(footprintInside(ix,iy,ang))return [ix,iy];}}
     return null;
   }
-  // 1) SQUELETTE partout = l'axe de chaque trait (lissé, prolongé jusqu'aux extrémités)
-  var medials=extendEnds(chainPolylines(traceSkeleton(skeletonize(r.mask,r.w,r.h),r.w,r.h,r,cell),cell*3),r,cell).map(function(p){return smoothPolyline(p,3);});
-  var guides=medials;
-  // 2) le long du squelette : règle bandes — n = max(1, ceil(G/E)-1), pas uniforme G/(n+1), bandes réparties (≤ E du bord)
-  var E=opt.edge, mods=[];
-  medials.forEach(function(poly){
-    var s=resample(poly,opt.maxsp);
+  // 1) SQUELETTE partout, COUPÉ AUX JONCTIONS = chaque branche est un seul trait (lissé, barbules enlevées)
+  var E=opt.edge;
+  function extendTips(run){
+    if(run.length<2)return run; var arr=run.slice();
+    [true,false].forEach(function(end){
+      var n=arr.length, p=end?arr[n-1]:arr[0], q=end?arr[n-2]:arr[1];
+      if(Dat(p[0],p[1])>=E*0.9)return;                 // bout intérieur (jonction) → ne pas prolonger
+      var dx=p[0]-q[0],dy=p[1]-q[1],l=Math.hypot(dx,dy)||1;dx/=l;dy/=l;var cur=p,st=0;
+      while(st++<2000){var nx=cur[0]+dx*cell,ny=cur[1]+dy*cell;if(!sampleInside(r,nx,ny))break;cur=[nx,ny];if(end)arr.push(cur);else arr.unshift(cur);}
+    });
+    return arr;
+  }
+  var medials=traceSkeleton(skeletonize(r.mask,r.w,r.h),r.w,r.h,r,cell)
+    .map(function(p){return smoothPolyline(p,6);})
+    .filter(function(p){var L=0;for(var k=1;k<p.length;k++)L+=Math.hypot(p[k][0]-p[k-1][0],p[k][1]-p[k-1][1]);return L>=opt.maxsp*0.7;})
+    .map(extendTips);
+  // 2) LIGNES DE BANDES : on décale l'axe selon la règle (n=⌈G/E⌉-1, pas uniforme) ; les voies se dédoublent/fusionnent proprement
+  function bandLines(M){
+    var step=Math.max(cell*3, opt.maxsp/6), s=resample(M,step);
+    // largeur (graisse/2) lissée le long de l'axe → décalages réguliers
+    var hs=s.map(function(p){return Dat(p[0],p[1]);});
+    for(var pass=0;pass<4;pass++){var t=hs.slice();for(var i=1;i<hs.length-1;i++)hs[i]=(t[i-1]+2*t[i]+t[i+1])/4;}
+    var lanes=[];
+    for(var k=0;k<s.length;k++){
+      var p=s[k], a=s[Math.max(0,k-3)], c2=s[Math.min(s.length-1,k+3)];   // tangente sur fenêtre large
+      var tx=c2[0]-a[0],ty=c2[1]-a[1],tl=Math.hypot(tx,ty)||1, nx=-ty/tl, ny=tx/tl;
+      var h=hs[k]; if(h<=0)continue;
+      var G=2*h, n=Math.max(1,Math.ceil(G/E)-1), gap=G/(n+1), offs=[];
+      for(var i2=1;i2<=n;i2++)offs.push(i2*gap-h);
+      var used={};
+      offs.forEach(function(o){
+        var pt=[p[0]+nx*o,p[1]+ny*o], best=-1,bd=1e9;
+        for(var li=0;li<lanes.length;li++){if(lanes[li].closed||used[li])continue;var dd=Math.abs(lanes[li].lastOff-o);if(dd<bd){bd=dd;best=li;}}
+        if(best>=0&&bd<=Math.max(gap*0.9,E*0.5)){lanes[best].pts.push(pt);lanes[best].lastOff=o;used[best]=1;}
+        else{lanes.push({pts:[pt],lastOff:o,closed:false});used[lanes.length-1]=1;}
+      });
+      for(var li2=0;li2<lanes.length;li2++)if(!used[li2])lanes[li2].closed=true;
+    }
+    // bandes parallèles, lissées — PAS de convergence en pointe aux jonctions (pas de V)
+    return lanes.map(function(L){return smoothPolyline(L.pts,5);}).filter(function(p){return p.length>=2;});
+  }
+  var guides=[];
+  medials.forEach(function(M){bandLines(M).forEach(function(bl){guides.push(bl);});});
+  guides=guides.filter(function(g){var L=0;for(var k=1;k<g.length;k++)L+=Math.hypot(g[k][0]-g[k-1][0],g[k][1]-g[k-1][1]);return L>=opt.maxsp*0.5;});
+  // 3) poser les modules le long de chaque ligne de bande (entre-modules), orientés le long de la ligne
+  var mods=[];
+  guides.forEach(function(g){
+    var s=resample(g,opt.maxsp);
     for(var k=0;k<s.length;k++){
       var a=s[Math.max(0,k-1)], c2=s[Math.min(s.length-1,k+1)];
       var tx=c2[0]-a[0],ty=c2[1]-a[1],tl=Math.hypot(tx,ty)||1;tx/=tl;ty/=tl;
-      var nx=-ty,ny=tx,ang=Math.atan2(ty,tx);
-      var h=Dat(s[k][0],s[k][1]); if(h<=0)continue;       // demi-largeur locale
-      var G=2*h, n=Math.max(1,Math.ceil(G/E)-1), gap=G/(n+1);
-      for(var i=1;i<=n;i++){
-        var o=i*gap-h;                                     // décalage depuis le centre (centré si n=1)
-        var q=fitOrPull(s[k][0]+nx*o, s[k][1]+ny*o, ang, tx, ty);
-        if(q)mods.push({x:q[0],y:q[1],ang:ang});
-      }
+      var ang=Math.atan2(ty,tx);
+      var q=fitOrPull(s[k][0],s[k][1],ang,tx,ty);
+      if(q)mods.push({x:q[0],y:q[1],ang:ang});
     }
   });
   // 4) anti-chevauchement
@@ -943,6 +998,7 @@ function run(){
     document.getElementById("btnWireframeStep").classList.remove("primary");
     document.getElementById("tDesign").checked=true;
     document.getElementById("tLed").checked=true;
+    var sk=document.getElementById("tSkel");if(sk)sk.checked=true;
     document.getElementById("tWire").checked=true;
     document.getElementById("legend").classList.toggle("show",state.wireLoops.length>0);
     renderResults(mod,pose,D);
@@ -1133,9 +1189,10 @@ function draw(){
   // câblage + modules (façon LED Wizard : modules à l'échelle, orientés, reliés, colorés par boucle)
   var showWire=document.getElementById("tWire").checked;
   var showLed=document.getElementById("tLed").checked;
-  // traits-guides (ligne de prépositionnement qui suit la lettre) — gris discret
-  if((showLed||showWire)&&state.bands&&state.bands.length){
-    ctx.lineWidth=1;ctx.strokeStyle="rgba(170,190,215,0.30)";
+  var skelEl=document.getElementById("tSkel"), showSkel=skelEl&&skelEl.checked;
+  // CALQUE SQUELETTE : les traits-guides qui suivent la lettre (trait net)
+  if(showSkel&&state.bands&&state.bands.length){
+    ctx.lineWidth=2;ctx.strokeStyle="#ff5c5c";ctx.lineCap="round";ctx.lineJoin="round";
     state.bands.forEach(function(g){
       if(g.length<2)return;
       ctx.beginPath();
@@ -1578,11 +1635,11 @@ function bind(){
   document.getElementById("btnExport").onclick=exportDxf;
   document.getElementById("btnBom").onclick=exportBom;
   document.getElementById("btnFit").onclick=fitView;
-  ["tDesign","tLed","tWire","tGrid","tWireframe"].forEach(function(id){document.getElementById(id).onchange=function(){
+  ["tDesign","tLed","tSkel","tWire","tGrid","tWireframe"].forEach(function(id){document.getElementById(id).onchange=function(){
     var wf=document.getElementById("tWireframe").checked;
     if(id==="tWireframe"){
-      if(wf){["tDesign","tLed","tWire","tGrid"].forEach(function(o){document.getElementById(o).checked=false;});}
-      else{document.getElementById("tDesign").checked=true;document.getElementById("tLed").checked=true;document.getElementById("tGrid").checked=true;}
+      if(wf){["tDesign","tLed","tSkel","tWire","tGrid"].forEach(function(o){document.getElementById(o).checked=false;});}
+      else{document.getElementById("tDesign").checked=true;document.getElementById("tLed").checked=true;document.getElementById("tSkel").checked=true;document.getElementById("tGrid").checked=true;}
       document.getElementById("btnWireframeStep").classList.toggle("primary",wf);
     }
     document.getElementById("legend").classList.toggle("show",!wf&&document.getElementById("tWire").checked&&state.wireLoops.length>0);
